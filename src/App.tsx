@@ -7,7 +7,7 @@ import { OrbitControls, Edges, Text } from '@react-three/drei';
 type Unit = 'm' | 'cm';
 const toMeters = (v: number, u: Unit) => (u === 'cm' ? v / 100 : v);
 const randomColour = () =>
-  `hsl(${Math.floor(Math.random() * 360)}, 60%, 55%)`; // pastel tone
+  '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
 
 /* ---------- data models ---------- */
 interface Truck {
@@ -57,6 +57,11 @@ function packCrates(
     const l = toMeters(crate.length, crate.lengthUnit);
     const w = toMeters(crate.width, crate.widthUnit);
     const h = toMeters(crate.height, crate.heightUnit);
+	
+	if (h > truckHei) {
+	  overflow.push(crate.id);
+	  continue;
+	}
 
     const lane = cursorL <= cursorR ? 'L' : 'R';
     const xFront = lane === 'L' ? cursorL : cursorR;
