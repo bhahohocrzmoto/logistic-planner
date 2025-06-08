@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Edges } from '@react-three/drei';
+import { OrbitControls, Edges, Text } from '@react-three/drei';
 
-/* ---------- types ---------- */
-
+/* ---------- helpers ---------- */
 type Unit = 'm' | 'cm';
+const toMeters = (v: number, u: Unit) => (u === 'cm' ? v / 100 : v);
 
-interface TruckSize {
+/* ---------- data models ---------- */
+interface Truck {
   length: number;
   width: number;
   height: number;
@@ -23,93 +24,88 @@ interface CrateInput {
   height: number;
   heightUnit: Unit;
   weight: number;
+  colour: string;
   stackable: boolean;
-  stackTargetId?: number; // id of the crate it sits on
+  stackTargetId?: number;
 }
 
 interface CratePlaced extends CrateInput {
-  position: [number, number, number]; // x, y, z (metres)
+  position: [number, number, number]; // x y z (m)
 }
 
-/* ---------- helpers ---------- */
-
-const toMeters = (value: number, unit: Unit) => (unit === 'cm' ? value / 100 : value);
-
-/* Naive bin-packing – good enough to visualise the idea                           *
- * 1. place all “base” crates (those without stackTarget) on the floor             *
- * 2. then place stacked crates centred on top of their target                     */
-function computeLayout(truck: TruckSize, crates: CrateInput[]): CratePlaced[] {
-  /* --- step 1 : floor crates ------------------------------------------------- */
+/* ---------- packing algorithm (dual-lane) ---------- */
+function packCrates(truck: Truck, crates: CrateInput[]): CratePlaced[] {
   const placed: CratePlaced[] = [];
-  const baseCrates = crates
-    .filter(c => !c.stackTargetId)
-    .sort((a, b) => b.weight - a.weight); // heavy first
 
-  let cursorX = 0;
-  let cursorZ = 0;
-  let rowHeight = 0;
+  /** sort heavy → light so heavy boxes go to the very front **/
+  const queue = [...crates.filter(c => !c.stackTargetId)].sort(
+    (a, b) => b.weight - a.weight
+  );
+
+  // two independent cursors that crawl down the truck’s length
+  let cursorL = 0; // left lane front-to-back progress (m)
+  let cursorR = 0; // right lane front-to-back progress (m)
+  const laneZ = { L: 0, R: toMeters(truck.width, truck.unit) }; // z positions of the two lanes
 
   const truckLen = toMeters(truck.length, truck.unit);
-  const truckWid = toMeters(truck.width, truck.unit);
 
-  for (const c of baseCrates) {
-    const w = toMeters(c.width, c.widthUnit);
-    const l = toMeters(c.length, c.lengthUnit);
-    const h = toMeters(c.height, c.heightUnit);
+  for (const crate of queue) {
+    const l = toMeters(crate.length, crate.lengthUnit);
+    const w = toMeters(crate.width, crate.widthUnit);
+    const h = toMeters(crate.height, crate.heightUnit);
 
-    // new row if the crate would overflow the length
-    if (cursorX + l > truckLen) {
-      cursorX = 0;
-      cursorZ += rowHeight;
-      rowHeight = 0;
-    }
+    /* choose whichever lane has the smaller cursor (keeps lanes even) */
+    const lane = cursorL <= cursorR ? 'L' : 'R';
+    const x = lane === 'L' ? cursorL : cursorR; // distance from front wall
+    const z = lane === 'L' ? w / 2 : laneZ.R - w / 2; // centre of crate
 
-    // very naive overflow check – just stop if truck is “full”
-    if (cursorZ + w > truckWid) break;
+    // stop if we’d overflow the truck
+    if (x + l > truckLen) break;
 
     placed.push({
-      ...c,
-      position: [cursorX + l / 2, h / 2, cursorZ + w / 2],
+      ...crate,
+      position: [x + l / 2, h / 2, z],
     });
 
-    cursorX += l;
-    rowHeight = Math.max(rowHeight, w);
+    // advance the chosen lane’s cursor
+    if (lane === 'L') cursorL += l;
+    else cursorR += l;
   }
 
-  /* --- step 2 : stacked crates ---------------------------------------------- */
-  const stacked = crates.filter(c => c.stackTargetId);
-  for (const c of stacked) {
-    const base = placed.find(p => p.id === c.stackTargetId);
-    if (!base) continue; // invalid target
+  /* ---------- stacked crates (centred on their target) ---------- */
+  crates
+    .filter(c => c.stackTargetId)
+    .forEach(c => {
+      const base = placed.find(p => p.id === c.stackTargetId);
+      if (!base) return;
 
-    const w = toMeters(c.width, c.widthUnit);
-    const l = toMeters(c.length, c.lengthUnit);
-    const h = toMeters(c.height, c.heightUnit);
+      const l = toMeters(c.length, c.lengthUnit);
+      const w = toMeters(c.width, c.widthUnit);
+      const h = toMeters(c.height, c.heightUnit);
 
-    placed.push({
-      ...c,
-      position: [
-        base.position[0],                                   // same x centre
-        base.position[1] + toMeters(base.height, base.heightUnit) / 2 + h / 2, // on top
-        base.position[2],                                   // same z centre
-      ],
+      const [bx, by, bz] = base.position;
+      const baseH = toMeters(base.height, base.heightUnit);
+
+      placed.push({
+        ...c,
+        position: [bx, by + baseH / 2 + h / 2, bz], // centred on top
+      });
     });
-  }
 
   return placed;
 }
 
-/* ---------- React UI ---------------------------------------------------------- */
-
+/* ---------- React component ---------- */
 export default function App() {
-  /* ---- state -------------------------------------------------------------- */
-  const [truck, setTruck] = useState<TruckSize>({
+  /* basic truck */
+  const [truck, setTruck] = useState<Truck>({
     length: 10,
     width: 2.5,
     height: 2.6,
     unit: 'm',
   });
 
+  /* one starter crate */
   const [crates, setCrates] = useState<CrateInput[]>([
     {
       id: 1,
@@ -121,10 +117,16 @@ export default function App() {
       height: 1,
       heightUnit: 'm',
       weight: 100,
+      colour: '#f28e1c',
       stackable: false,
     },
   ]);
 
+  /* UI helpers */
+  const updTruck = (f: keyof Truck, v: any) =>
+    setTruck(prev => ({ ...prev, [f]: v }));
+  const updCrate = (id: number, patch: Partial<CrateInput>) =>
+    setCrates(prev => prev.map(c => (c.id === id ? { ...c, ...patch } : c)));
   const addCrate = () =>
     setCrates(prev => [
       ...prev,
@@ -138,161 +140,145 @@ export default function App() {
         height: 1,
         heightUnit: 'm',
         weight: 50,
+        colour: '#8bc34a',
         stackable: false,
       },
     ]);
 
-  /* ---- derived data ------------------------------------------------------- */
-  const placedCrates = computeLayout(truck, crates);
+  const placed = packCrates(truck, crates);
 
-  /* ---- helpers to update forms ------------------------------------------- */
-  const updateTruckField = (field: keyof TruckSize, value: number | Unit) =>
-    setTruck(prev => ({ ...prev, [field]: value }));
-
-  const updateCrate = (id: number, patch: Partial<CrateInput>) =>
-    setCrates(prev => prev.map(c => (c.id === id ? { ...c, ...patch } : c)));
-
-  /* ---- render ------------------------------------------------------------- */
+  /* ---------- render ---------- */
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      {/* ------------ left column : UI ------------------------------------ */}
-      <div style={{ width: 320, overflowY: 'auto', padding: 16, boxSizing: 'border-box', borderRight: '1px solid #ddd' }}>
-        <h2>Truck Size</h2>
-        <label>
-          Length&nbsp;
-          <input
-            type="number"
-            value={truck.length}
-            onChange={e => updateTruckField('length', Number(e.target.value))}
-            style={{ width: 70 }}
-          />
-        </label>
-        <select value={truck.unit} onChange={e => updateTruckField('unit', e.target.value as Unit)}>
-          <option value="m">m</option>
-          <option value="cm">cm</option>
-        </select>
-        <br />
-        <label>
-          Width&nbsp;&nbsp;
-          <input
-            type="number"
-            value={truck.width}
-            onChange={e => updateTruckField('width', Number(e.target.value))}
-            style={{ width: 70 }}
-          />
-        </label>
-        <select value={truck.unit} onChange={e => updateTruckField('unit', e.target.value as Unit)}>
-          <option value="m">m</option>
-          <option value="cm">cm</option>
-        </select>
-        <br />
-        <label>
-          Height&nbsp;
-          <input
-            type="number"
-            value={truck.height}
-            onChange={e => updateTruckField('height', Number(e.target.value))}
-            style={{ width: 70 }}
-          />
-        </label>
-        <select value={truck.unit} onChange={e => updateTruckField('unit', e.target.value as Unit)}>
-          <option value="m">m</option>
-          <option value="cm">cm</option>
-        </select>
+      {/* ---------- left: form UI ---------- */}
+      <div style={{ width: 340, padding: 16, overflowY: 'auto', borderRight: '1px solid #ddd' }}>
+        <h2>Truck</h2>
+        {(['length', 'width', 'height'] as const).map(dim => (
+          <p key={dim}>
+            {dim[0].toUpperCase() + dim.slice(1)}&nbsp;
+            <input
+              type="number"
+              value={truck[dim]}
+              style={{ width: 70 }}
+              onChange={e => updTruck(dim, Number(e.target.value))}
+            />{' '}
+            {truck.unit}
+          </p>
+        ))}
+        <p>
+          Unit&nbsp;
+          <select value={truck.unit} onChange={e => updTruck('unit', e.target.value as Unit)}>
+            <option value="m">m</option>
+            <option value="cm">cm</option>
+          </select>
+        </p>
 
         <h2 style={{ marginTop: 24 }}>Crates</h2>
-
-        {crates.map(crate => (
-          <fieldset key={crate.id} style={{ marginBottom: 16 }}>
-            <legend>{crate.label}</legend>
-
-            <label>
+        {crates.map(c => (
+          <fieldset key={c.id} style={{ marginBottom: 16 }}>
+            <legend>{c.label}</legend>
+            <p>
               Label&nbsp;
-              <input
-                value={crate.label}
-                onChange={e => updateCrate(crate.id, { label: e.target.value })}
-              />
-            </label>
-            <br />
+              <input value={c.label} onChange={e => updCrate(c.id, { label: e.target.value })} />
+            </p>
 
             {(['length', 'width', 'height'] as const).map(dim => (
-              <span key={dim}>
-                {dim[0].toUpperCase() + dim.slice(1)}{' '}
+              <p key={dim}>
+                {dim[0].toUpperCase() + dim.slice(1)}&nbsp;
                 <input
                   type="number"
-                  value={crate[dim]}
-                  onChange={e => updateCrate(crate.id, { [dim]: Number(e.target.value) } as any)}
+                  value={c[dim]}
                   style={{ width: 60 }}
-                />
+                  onChange={e => updCrate(c.id, { [dim]: Number(e.target.value) } as any)}
+                />{' '}
                 <select
-                  value={crate[`${dim}Unit` as const]}
-                  onChange={e => updateCrate(crate.id, { [`${dim}Unit`]: e.target.value as Unit } as any)}
+                  value={c[`${dim}Unit` as const]}
+                  onChange={e =>
+                    updCrate(c.id, { [`${dim}Unit`]: e.target.value as Unit } as any)
+                  }
                 >
                   <option value="m">m</option>
                   <option value="cm">cm</option>
                 </select>
-                <br />
-              </span>
+              </p>
             ))}
 
-            <label>
+            <p>
               Weight&nbsp;
               <input
                 type="number"
-                value={crate.weight}
-                onChange={e => updateCrate(crate.id, { weight: Number(e.target.value) })}
+                value={c.weight}
                 style={{ width: 70 }}
-              />
-              &nbsp;kg
-            </label>
-            <br />
+                onChange={e => updCrate(c.id, { weight: Number(e.target.value) })}
+              />{' '}
+              kg
+            </p>
 
-            <label>
+            <p>
+              Colour&nbsp;
+              <input
+                type="color"
+                value={c.colour}
+                onChange={e => updCrate(c.id, { colour: e.target.value })}
+              />
+            </p>
+
+            <p>
               Stackable&nbsp;
               <input
                 type="checkbox"
-                checked={crate.stackable}
-                onChange={e => updateCrate(crate.id, { stackable: e.target.checked })}
+                checked={c.stackable}
+                onChange={e => updCrate(c.id, { stackable: e.target.checked })}
               />
-            </label>
-            <br />
+            </p>
 
-            {crate.stackable && (
-              <label>
+            {c.stackable && (
+              <p>
                 On top of&nbsp;
                 <select
-                  value={crate.stackTargetId ?? ''}
+                  value={c.stackTargetId ?? ''}
                   onChange={e =>
-                    updateCrate(crate.id, { stackTargetId: e.target.value ? Number(e.target.value) : undefined })
+                    updCrate(c.id, {
+                      stackTargetId: e.target.value ? Number(e.target.value) : undefined,
+                    })
                   }
                 >
-                  <option value="">— Choose —</option>
+                  <option value="">— choose —</option>
                   {crates
-                    .filter(c => c.id !== crate.id)
-                    .map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.label}
+                    .filter(other => other.id !== c.id)
+                    .map(o => (
+                      <option key={o.id} value={o.id}>
+                        {o.label}
                       </option>
                     ))}
                 </select>
-              </label>
+              </p>
             )}
           </fieldset>
         ))}
-
         <button onClick={addCrate}>+ Add Crate</button>
-        <p style={{ fontSize: 12, color: '#666' }}>
-          Changes are rendered live – no “Run” button needed.
-        </p>
+        <p style={{ fontSize: 12, color: '#666' }}>Scene updates live as you edit.</p>
       </div>
 
-      {/* ------------ right column : 3-D view ----------------------------- */}
+      {/* ---------- right: 3-D view ---------- */}
       <div style={{ flex: 1 }}>
-        <Canvas camera={{ position: [truck.length, truck.height, truck.width] }} shadows>
+        <Canvas camera={{ position: [truck.length, truck.height * 1.2, truck.width * 1.5] }}>
           <ambientLight intensity={0.5} />
           <directionalLight position={[5, 10, 5]} intensity={0.8} castShadow />
 
-          {/* Truck floor (simple plane) */}
+          {/* FRONT WALL (grey) */}
+          <mesh position={[0, toMeters(truck.height, truck.unit) / 2, 0]} receiveShadow>
+            <boxGeometry
+              args={[
+                0.05,
+                toMeters(truck.height, truck.unit),
+                toMeters(truck.width, truck.unit),
+              ]}
+            />
+            <meshStandardMaterial color="#777" transparent opacity={0.3} />
+          </mesh>
+
+          {/* FLOOR */}
           <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
             <planeGeometry
               args={[toMeters(truck.length, truck.unit), toMeters(truck.width, truck.unit)]}
@@ -300,24 +286,31 @@ export default function App() {
             <meshStandardMaterial color="#dddddd" />
           </mesh>
 
-          {/* Crates */}
-          {placedCrates.map(c => {
+          {/* CRATES */}
+          {placed.map(c => {
             const l = toMeters(c.length, c.lengthUnit);
             const w = toMeters(c.width, c.widthUnit);
             const h = toMeters(c.height, c.heightUnit);
-
             return (
-              <mesh
-                key={c.id}
-                position={c.position}
-                castShadow
-                receiveShadow
-                userData={{ label: c.label }}
-              >
-                <boxGeometry args={[l, h, w]} />
-                <meshStandardMaterial color="orange" />
-                <Edges scale={1.02} threshold={15} color="black" />
-              </mesh>
+              <group key={c.id} position={c.position}>
+                <mesh castShadow receiveShadow>
+                  <boxGeometry args={[l, h, w]} />
+                  <meshStandardMaterial color={c.colour} />
+                  <Edges scale={1.02} threshold={15} color="black" />
+                </mesh>
+
+                {/* Label on top face */}
+                <Text
+                  position={[0, h / 2 + 0.02, 0]}
+                  rotation={[-Math.PI / 2, 0, 0]}
+                  fontSize={w * 0.15}
+                  color="black"
+                  anchorX="center"
+                  anchorY="middle"
+                >
+                  {c.label}
+                </Text>
+              </group>
             );
           })}
 
