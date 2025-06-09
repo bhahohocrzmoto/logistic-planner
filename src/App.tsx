@@ -33,6 +33,81 @@ interface ParsedRow {            // <- rows read from Excel
 interface CratePlaced extends CrateInput { position: [number, number, number]; }
 
 /* ---------- packer (unchanged) ---------- */
+/* ---------- dual-lane packer, returns placed + overflow list ---------- */
+function packCrates(
+  truck: Truck,
+  crates: CrateInput[]
+): { placed: CratePlaced[]; overflowIds: number[] } {
+  const placed: CratePlaced[] = [];
+  const overflow: number[] = [];
+
+  const baseQueue = [...crates.filter(c => !c.stackTargetId)].sort(
+    (a, b) => b.weight - a.weight
+  );
+
+  const truckLen = toMeters(truck.length, truck.unit);
+  const truckWid = toMeters(truck.width, truck.unit);
+  const truckHei = toMeters(truck.height, truck.unit);
+
+  let cursorL = 0;
+  let cursorR = 0;
+
+  for (const crate of baseQueue) {
+    const l = toMeters(crate.length, crate.lengthUnit);
+    const w = toMeters(crate.width, crate.widthUnit);
+    const h = toMeters(crate.height, crate.heightUnit);
+
+    if (h > truckHei) {
+      overflow.push(crate.id);
+      continue;
+    }
+
+    const lane = cursorL <= cursorR ? 'L' : 'R';
+    const xFront = lane === 'L' ? cursorL : cursorR;
+
+    if (xFront + l > truckLen || w > truckWid) {
+      overflow.push(crate.id);
+      continue;
+    }
+
+    const zCentre = lane === 'L' ? w / 2 : truckWid - w / 2;
+
+    placed.push({
+      ...crate,
+      position: [xFront + l / 2, h / 2, zCentre]
+    });
+
+    lane === 'L' ? (cursorL += l) : (cursorR += l);
+  }
+
+  /* ---------- stacked crates ---------- */
+  crates
+    .filter(c => c.stackTargetId)
+    .forEach(c => {
+      const base = placed.find(p => p.id === c.stackTargetId);
+      if (!base) {
+        overflow.push(c.id);
+        return;
+      }
+
+      const h = toMeters(c.height, c.heightUnit);
+      const baseH = toMeters(base.height, base.heightUnit);
+      const y = base.position[1] + baseH / 2 + h / 2;
+
+      if (y + h / 2 > truckHei) {
+        overflow.push(c.id);
+        return;
+      }
+
+      placed.push({
+        ...c,
+        position: [base.position[0], y, base.position[2]]
+      });
+    });
+
+  return { placed, overflowIds: overflow };
+}
+
 /* … keep the same packCrates function here … */
 
 /* ======================================================================= */
