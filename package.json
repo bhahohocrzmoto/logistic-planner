@@ -16,7 +16,7 @@
   "devDependencies": {
     "@types/react": "^18.2.21",
     "@types/react-dom": "^18.2.7",
-    "@types/xlsx": "^0.17.7"
+    "@types/xlsx": "^0.17.6"   // ← version that actually exists
   },
 
   "scripts": {
