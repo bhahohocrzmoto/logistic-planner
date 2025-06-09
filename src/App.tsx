@@ -34,7 +34,7 @@ interface CratePlaced extends CrateInput {
   position: [number, number, number]; // x y z (m)
 }
 
-/* ---------- dual-lane packer, returns placed + overflow list ---------- */
+/* ---------- dual-lane packer (unchanged) ---------- */
 function packCrates(
   truck: Truck,
   crates: CrateInput[]
@@ -57,20 +57,16 @@ function packCrates(
     const l = toMeters(crate.length, crate.lengthUnit);
     const w = toMeters(crate.width, crate.widthUnit);
     const h = toMeters(crate.height, crate.heightUnit);
-	
-	if (h > truckHei) {
-	  overflow.push(crate.id);
-	  continue;
-	}
+
+    if (h > truckHei) {
+      overflow.push(crate.id);
+      continue;
+    }
 
     const lane = cursorL <= cursorR ? 'L' : 'R';
     const xFront = lane === 'L' ? cursorL : cursorR;
 
-    if (xFront + l > truckLen) {
-      overflow.push(crate.id);
-      continue;
-    }
-    if (w > truckWid) {
+    if (xFront + l > truckLen || w > truckWid) {
       overflow.push(crate.id);
       continue;
     }
@@ -82,11 +78,10 @@ function packCrates(
       position: [xFront + l / 2, h / 2, zCentre],
     });
 
-    if (lane === 'L') cursorL += l;
-    else cursorR += l;
+    lane === 'L' ? (cursorL += l) : (cursorR += l);
   }
 
-  /* ---------- stacked crates ---------- */
+  /* stacked crates */
   crates
     .filter(c => c.stackTargetId)
     .forEach(c => {
@@ -96,12 +91,10 @@ function packCrates(
         return;
       }
 
-      const l = toMeters(c.length, c.lengthUnit);
-      const w = toMeters(c.width, c.widthUnit);
       const h = toMeters(c.height, c.heightUnit);
       const baseH = toMeters(base.height, base.heightUnit);
-
       const y = base.position[1] + baseH / 2 + h / 2;
+
       if (y + h / 2 > truckHei) {
         overflow.push(c.id);
         return;
@@ -118,7 +111,7 @@ function packCrates(
 
 /* ---------- React component ---------- */
 export default function App() {
-  /* ----- state ---------------------------------------------------------- */
+  /* main states */
   const [truck, setTruck] = useState<Truck>({
     length: 10,
     width: 2.5,
@@ -142,18 +135,24 @@ export default function App() {
     },
   ]);
 
-  /* ----- derived layout ------------------------------------------------- */
+  /* one-level history for undo */
+  const [history, setHistory] = useState<CrateInput[][]>([]);
+
+  /* derived layout */
   const { placed, overflowIds } = useMemo(
     () => packCrates(truck, crates),
     [truck, crates]
   );
 
-  /* ----- helpers -------------------------------------------------------- */
+  /* helpers */
   const updTruck = (k: keyof Truck, v: any) => setTruck(p => ({ ...p, [k]: v }));
   const updCrate = (id: number, patch: Partial<CrateInput>) =>
     setCrates(prev => prev.map(c => (c.id === id ? { ...c, ...patch } : c)));
 
-  const addCrate = () =>
+  /* ------ add + undo --------------------------------------------------- */
+  const addCrate = () => {
+    // snapshot BEFORE adding
+    setHistory([JSON.parse(JSON.stringify(crates))]);
     setCrates(prev => [
       ...prev,
       {
@@ -170,21 +169,26 @@ export default function App() {
         stackable: false,
       },
     ]);
+  };
 
-  /* ---------- UI -------------------------------------------------------- */
+  const undo = () => {
+    if (history.length === 0) return;
+    setCrates(history[0]);
+    setHistory([]); // single-level
+  };
 
+  /* UI vars */
   const truckLen = toMeters(truck.length, truck.unit);
   const truckWid = toMeters(truck.width, truck.unit);
   const truckHei = toMeters(truck.height, truck.unit);
-
-  /* crates that already HAVE something on top → cannot appear in “On top of” list */
   const occupiedBaseIds = crates
     .filter(c => c.stackTargetId)
     .map(c => c.stackTargetId!) as number[];
 
+  /* ---------- render ---------------------------------------------------- */
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      {/* ===== warning banner ========================================= */}
+      {/* ===== warning banner ===== */}
       {overflowIds.length > 0 && (
         <div
           style={{
@@ -207,10 +211,10 @@ export default function App() {
         </div>
       )}
 
-      {/* ===== navigation cheat-sheet ================================ */}
+      {/* ===== nav cheat-sheet ===== */}
       <img
         src="/nav-help.png"
-        alt="Mouse controls: rotate, pan, zoom"
+        alt="Mouse controls"
         style={{
           position: 'absolute',
           right: 10,
@@ -222,7 +226,7 @@ export default function App() {
         }}
       />
 
-      {/* ===== form column ========================================== */}
+      {/* ===== form column ===== */}
       <div
         style={{
           width: 340,
@@ -231,6 +235,7 @@ export default function App() {
           borderRight: '1px solid #ddd',
         }}
       >
+        {/* truck inputs … unchanged */}
         <h2>Truck</h2>
         {(['length', 'width', 'height'] as const).map(d => (
           <p key={d}>
@@ -252,26 +257,23 @@ export default function App() {
           </select>
         </p>
 
+        {/* crate list … unchanged */}
         <h2 style={{ marginTop: 24 }}>Crates</h2>
         {crates.map(c => {
           const availableBases = crates.filter(
             b =>
-              b.id !== c.id && // not itself
-              !occupiedBaseIds.includes(b.id) && // nobody already on top
-              !b.stackTargetId // a base crate shouldn't itself be stacked
+              b.id !== c.id &&
+              !occupiedBaseIds.includes(b.id) &&
+              !b.stackTargetId
           );
           return (
             <fieldset key={c.id} style={{ marginBottom: 16 }}>
+              {/* fields unchanged */}
               <legend>{c.label}</legend>
-
               <label>
-                Label{' '}
-                <input
-                  value={c.label}
-                  onChange={e => updCrate(c.id, { label: e.target.value })}
-                />
+                Label&nbsp;
+                <input value={c.label} onChange={e => updCrate(c.id, { label: e.target.value })} />
               </label>
-
               {(['length', 'width', 'height'] as const).map(dim => (
                 <p key={dim}>
                   {dim}:{' '}
@@ -292,9 +294,8 @@ export default function App() {
                   </select>
                 </p>
               ))}
-
               <p>
-                Weight{' '}
+                Weight&nbsp;
                 <input
                   type="number"
                   style={{ width: 70 }}
@@ -303,11 +304,14 @@ export default function App() {
                 />{' '}
                 kg
               </p>
-
               <p>
-                Colour <input type="color" value={c.colour} onChange={e => updCrate(c.id, { colour: e.target.value })} />
+                Colour{' '}
+                <input
+                  type="color"
+                  value={c.colour}
+                  onChange={e => updCrate(c.id, { colour: e.target.value })}
+                />
               </p>
-
               <p>
                 Stackable{' '}
                 <input
@@ -316,7 +320,6 @@ export default function App() {
                   onChange={e => updCrate(c.id, { stackable: e.target.checked })}
                 />
               </p>
-
               {c.stackable && (
                 <p>
                   On top of{' '}
@@ -329,9 +332,9 @@ export default function App() {
                     }
                   >
                     <option value="">— choose —</option>
-                    {availableBases.map(base => (
-                      <option key={base.id} value={base.id}>
-                        {base.label}
+                    {availableBases.map(b => (
+                      <option key={b.id} value={b.id}>
+                        {b.label}
                       </option>
                     ))}
                   </select>
@@ -341,27 +344,25 @@ export default function App() {
           );
         })}
 
+        {/* buttons */}
         <button onClick={addCrate}>+ Add Crate</button>
+        <button onClick={undo} disabled={history.length === 0} style={{ marginLeft: 8 }}>
+          Undo last crate
+        </button>
         <p style={{ fontSize: 12, color: '#666' }}>Scene updates instantly.</p>
       </div>
 
-      {/* ===== 3-D view column ====================================== */}
+      {/* ===== 3-D view column ===== */}
       <div style={{ flex: 1 }}>
         <Canvas camera={{ position: [truckLen, truckHei * 1.3, truckWid * 1.4] }}>
           <ambientLight intensity={0.5} />
           <directionalLight position={[5, 10, 5]} intensity={0.8} castShadow />
 
-          {/* front wall */}
-          <mesh
-            position={[0.025, truckHei / 2, truckWid / 2]}
-            castShadow
-            receiveShadow
-          >
+          {/* front wall + floor (unchanged) */}
+          <mesh position={[0.025, truckHei / 2, truckWid / 2]} receiveShadow>
             <boxGeometry args={[0.05, truckHei, truckWid]} />
             <meshStandardMaterial color="#777" transparent opacity={0.35} />
           </mesh>
-
-          {/* floor */}
           <mesh
             rotation={[-Math.PI / 2, 0, 0]}
             position={[truckLen / 2, 0, truckWid / 2]}
@@ -371,7 +372,7 @@ export default function App() {
             <meshStandardMaterial color="#d0d0d0" />
           </mesh>
 
-          {/* crates */}
+          {/* crates (unchanged) */}
           {placed.map(c => {
             const l = toMeters(c.length, c.lengthUnit);
             const w = toMeters(c.width, c.widthUnit);
