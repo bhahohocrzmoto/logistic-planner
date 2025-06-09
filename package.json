@@ -10,14 +10,13 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1",
-
-    "xlsx": "^0.18.5"            // ← NEW: SheetJS for Excel parsing
+    "xlsx": "^0.18.5"
   },
 
   "devDependencies": {
     "@types/react": "^18.2.21",
     "@types/react-dom": "^18.2.7",
-    "@types/xlsx": "^0.17.7"      // ← NEW: TypeScript declarations
+    "@types/xlsx": "^0.17.7"
   },
 
   "scripts": {
