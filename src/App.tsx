@@ -118,15 +118,33 @@ export default function App() {
   const [maxLoad, setMaxLoad] = useState<number>(1000);
   const [crates, setCrates] = useState<CrateInput[]>([]);
   const [history, setHistory] = useState<CrateInput[][]>([]);
-  const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
-  const [rowSelection, setRowSelection] = useState<Set<number>>(new Set());
 
   const { placed, overflowIds } = useMemo(() => packCrates(truck, crates), [truck, crates]);
   const totalWeight = placed.reduce((sum, c) => sum + c.weight, 0);
   const overWeight = totalWeight > maxLoad;
   const overlaps = findOverlaps(placed);
 
-  const overlapWarning = overlaps.length > 0 ? `🚫 Crate overlap detected between: ${overlaps.map(([a, b]) => `${a.label} & ${b.label}`).join(', ')}` : null;
+  const addCrate = () => {
+    setHistory([JSON.parse(JSON.stringify(crates))]);
+    if (overWeight) {
+      alert("Max load reached! Cannot add more crates.");
+      return;
+    }
+    const newId = crates.length ? Math.max(...crates.map(c => c.id)) + 1 : 1;
+    setCrates(prev => [...prev, {
+      id: newId,
+      label: `Crate ${newId}`,
+      length: 1,
+      width: 1,
+      height: 1,
+      lengthUnit: 'm',
+      widthUnit: 'm',
+      heightUnit: 'm',
+      weight: 100,
+      colour: randomColour(),
+      stackable: false
+    }]);
+  };
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
@@ -134,15 +152,63 @@ export default function App() {
         <div style={{ position:'absolute',top:0,left:0,right:0,padding:'6px 12px',background:'#c62828',color:'#fff',fontWeight:600,zIndex:50,textAlign:'center'}}>
           {overflowIds.length > 0 && <>⚠️ Overflow: {overflowIds.map(id => crates.find(c => c.id === id)?.label).join(', ')} <br/></>}
           {overWeight && <>⚠️ Load exceeded: {totalWeight.toFixed(1)} kg / {maxLoad} kg<br/></>}
-          {overlaps.length > 0 && <>{overlapWarning}</>}
+          {overlaps.length > 0 && <>🚫 Overlap: {overlaps.map(([a, b]) => `${a.label} & ${b.label}`).join(', ')}</>}
         </div>
       )}
 
-      {/* Placeholder for full UI - replace with actual sidebar and canvas */}
-      <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        <p style={{ fontSize: '1.5rem', color: '#555' }}>
-          🚧 UI coming soon — full interface and canvas will render here.
-        </p>
+      {/* Sidebar */}
+      <div style={{ width: 300, padding: 20, borderRight: '1px solid #ccc', overflowY: 'auto' }}>
+        <h2>Truck</h2>
+        <p>Length: <input type="number" value={truck.length} onChange={e => setTruck({ ...truck, length: +e.target.value })} /></p>
+        <p>Width: <input type="number" value={truck.width} onChange={e => setTruck({ ...truck, width: +e.target.value })} /></p>
+        <p>Height: <input type="number" value={truck.height} onChange={e => setTruck({ ...truck, height: +e.target.value })} /></p>
+        <p>Unit: <select value={truck.unit} onChange={e => setTruck({ ...truck, unit: e.target.value as Unit })}><option value="m">m</option><option value="cm">cm</option></select></p>
+        <p>Max Load (kg): <input type="number" value={maxLoad} onChange={e => setMaxLoad(+e.target.value)} /></p>
+        <hr />
+        <h2>Crates</h2>
+        {crates.map(crate => (
+          <div key={crate.id} style={{ marginBottom: 12, border: '1px solid #aaa', padding: 8 }}>
+            <strong>{crate.label}</strong>
+            <p>H×L×W: {crate.height}×{crate.length}×{crate.width} {crate.heightUnit}</p>
+            <p>Weight: {crate.weight} kg</p>
+            <button onClick={() => setCrates(prev => prev.filter(c => c.id !== crate.id))}>Delete</button>
+          </div>
+        ))}
+        <button onClick={addCrate}>+ Add Crate</button>
+      </div>
+
+      {/* 3D Canvas */}
+      <div style={{ flex: 1 }}>
+        <Canvas camera={{ position: [truck.length * 1.2, truck.height * 1.5, truck.width * 2] }}>
+          <ambientLight intensity={0.5} />
+          <directionalLight position={[5, 10, 5]} intensity={0.8} castShadow />
+          <mesh position={[0.025, toMeters(truck.height, truck.unit) / 2, toMeters(truck.width, truck.unit) / 2]} receiveShadow>
+            <boxGeometry args={[0.05, toMeters(truck.height, truck.unit), toMeters(truck.width, truck.unit)]} />
+            <meshStandardMaterial color="#777" transparent opacity={0.35} />
+          </mesh>
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[toMeters(truck.length, truck.unit) / 2, 0, toMeters(truck.width, truck.unit) / 2]} receiveShadow>
+            <planeGeometry args={[toMeters(truck.length, truck.unit), toMeters(truck.width, truck.unit)]} />
+            <meshStandardMaterial color="#d0d0d0" />
+          </mesh>
+          {placed.map(c => {
+            const l = toMeters(c.length, c.lengthUnit);
+            const w = toMeters(c.width, c.widthUnit);
+            const h = toMeters(c.height, c.heightUnit);
+            return (
+              <group key={c.id} position={c.position}>
+                <mesh castShadow receiveShadow>
+                  <boxGeometry args={[l, h, w]} />
+                  <meshStandardMaterial color={c.colour} />
+                  <Edges scale={1.02} threshold={15} color="black" />
+                </mesh>
+                <Text position={[0, h / 2 + 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} fontSize={Math.min(l, w) * 0.18} color="black" anchorX="center" anchorY="middle">
+                  {c.label}
+                </Text>
+              </group>
+            );
+          })}
+          <OrbitControls makeDefault />
+        </Canvas>
       </div>
     </div>
   );
