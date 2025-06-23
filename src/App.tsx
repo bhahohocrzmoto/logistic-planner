@@ -126,12 +126,10 @@ export default function App() {
   const overWeight = totalWeight > maxLoad;
   const overlaps = findOverlaps(placed);
 
-  // Render the overlap warning banner
   const overlapWarning = overlaps.length > 0 ? `🚫 Crate overlap detected between: ${overlaps.map(([a, b]) => `${a.label} & ${b.label}`).join(', ')}` : null;
 
-  // rest of your component logic and render
   return (
-    <>
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       {(overflowIds.length > 0 || overWeight || overlaps.length > 0) && (
         <div style={{ position:'absolute',top:0,left:0,right:0,padding:'6px 12px',background:'#c62828',color:'#fff',fontWeight:600,zIndex:50,textAlign:'center'}}>
           {overflowIds.length > 0 && <>⚠️ Overflow: {overflowIds.map(id => crates.find(c => c.id === id)?.label).join(', ')} <br/></>}
@@ -139,7 +137,13 @@ export default function App() {
           {overlaps.length > 0 && <>{overlapWarning}</>}
         </div>
       )}
-      {/* The rest of your render code remains unchanged */}
-    </>
+
+      {/* Placeholder for full UI - replace with actual sidebar and canvas */}
+      <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <p style={{ fontSize: '1.5rem', color: '#555' }}>
+          🚧 UI coming soon — full interface and canvas will render here.
+        </p>
+      </div>
+    </div>
   );
-}  
+}
