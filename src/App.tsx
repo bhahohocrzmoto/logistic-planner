@@ -1,4 +1,4 @@
-/*  App.tsx  – patched: TypeScript keys narrowed, compile error fixed */
+/*  App.tsx  – fully rebuilt to fix truncated JSX & ESLint syntax error */
 import React, { useState, useMemo, ChangeEvent } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Edges, Text } from '@react-three/drei';
@@ -7,20 +7,18 @@ import * as XLSX from 'xlsx';
 /* ───────────────────────── helpers ───────────────────────── */
 type Unit = 'm' | 'cm';
 const toMeters = (v: number, u: Unit) => (u === 'cm' ? v / 100 : v);
-const randomColour = () =>
-  '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
+const randomColour = () => `#${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')}`;
 
-/* ──────────────────────── data models ─────────────────────── */
+/* ───────────────────────── models ───────────────────────── */
 interface Truck {
   length: number;
   width: number;
   height: number;
   unit: Unit;
-  /** Maximum load capacity in kg (optional). */
-  maxLoad?: number;
+  maxLoad?: number; // kg
 }
 
-/* dimension‑axis utilities */
+// dimensions helpers
 type DimAxis = 'height' | 'length' | 'width';
 type DimUnitKey = `${DimAxis}Unit`;
 
@@ -35,26 +33,15 @@ interface CrateInput {
   stackable: boolean;
   stackTargetId?: number;
 }
-interface ParsedRow {
-  label: string;
-  length: number;
-  width: number;
-  height: number;
-  weight: number;
-}
+interface ParsedRow { label: string; length: number; width: number; height: number; weight: number; }
 interface CratePlaced extends CrateInput { position: [number, number, number]; }
 
-/* ─────────────────── simple packer (unchanged) ─────────────────── */
-function packCrates(
-  truck: Truck,
-  crates: CrateInput[]
-): { placed: CratePlaced[]; overflowIds: number[] } {
+/* ─────────────────── naive packer ─────────────────── */
+function packCrates(truck: Truck, crates: CrateInput[]): { placed: CratePlaced[]; overflowIds: number[] } {
   const placed: CratePlaced[] = [];
   const overflow: number[] = [];
 
-  const baseQueue = [...crates.filter(c => !c.stackTargetId)].sort(
-    (a, b) => b.weight - a.weight
-  );
+  const baseQueue = [...crates.filter(c => !c.stackTargetId)].sort((a, b) => b.weight - a.weight);
 
   const truckLen = toMeters(truck.length, truck.unit);
   const truckWid = toMeters(truck.width, truck.unit);
@@ -80,7 +67,7 @@ function packCrates(
     lane === 'L' ? (cursorL += l) : (cursorR += l);
   }
 
-  /* stacked crates */
+  // stacked crates
   crates.filter(c => c.stackTargetId).forEach(c => {
     const base = placed.find(p => p.id === c.stackTargetId);
     if (!base) { overflow.push(c.id); return; }
@@ -97,13 +84,10 @@ function packCrates(
   return { placed, overflowIds: overflow };
 }
 
-/* ══════════════════════════════ COMPONENT ═════════════════════════════ */
+/* ═══════════════════════ COMPONENT ═══════════════════════ */
 export default function App() {
-  /* ─────────── state ─────────── */
-  const [truck, setTruck] = useState<Truck>({
-    length: 10, width: 2.5, height: 2.6, unit: 'm', maxLoad: 1000,
-  });
-
+  /* ─ state ─ */
+  const [truck, setTruck] = useState<Truck>({ length: 10, width: 2.5, height: 2.6, unit: 'm', maxLoad: 1000 });
   const [crates, setCrates] = useState<CrateInput[]>([{
     id: 1, label: 'Crate 1', length: 1, lengthUnit: 'm', width: 1, widthUnit: 'm', height: 1, heightUnit: 'm', weight: 100, colour: randomColour(), stackable: false,
   }]);
@@ -111,12 +95,12 @@ export default function App() {
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
   const [rowSelection, setRowSelection] = useState<Set<number>>(new Set());
 
-  /* ─────────── derived values ─────────── */
+  /* ─ derived ─ */
   const { placed, overflowIds } = useMemo(() => packCrates(truck, crates), [truck, crates]);
   const totalWeight = useMemo(() => crates.reduce((s, c) => s + c.weight, 0), [crates]);
   const capacityReached = truck.maxLoad !== undefined && totalWeight >= truck.maxLoad;
 
-  /* overlap detection */
+  /* overlap detector */
   const overlaps = useMemo(() => {
     const list: [string, string][] = [];
     for (let i = 0; i < placed.length - 1; i++) {
@@ -140,40 +124,36 @@ export default function App() {
           zMin: b.position[2] - toMeters(b.width, b.widthUnit) / 2,
           zMax: b.position[2] + toMeters(b.width, b.widthUnit) / 2,
         };
-        if (dimsA.xMin < dimsB.xMax && dimsA.xMax > dimsB.xMin &&
-            dimsA.yMin < dimsB.yMax && dimsA.yMax > dimsB.yMin &&
-            dimsA.zMin < dimsB.zMax && dimsA.zMax > dimsB.zMin) {
-          list.push([a.label, b.label]);
-        }
+        const overlap = dimsA.xMin < dimsB.xMax && dimsA.xMax > dimsB.xMin &&
+                        dimsA.yMin < dimsB.yMax && dimsA.yMax > dimsB.yMin &&
+                        dimsA.zMin < dimsB.zMax && dimsA.zMax > dimsB.zMin;
+        if (overlap) list.push([a.label, b.label]);
       }
     }
     return list;
   }, [placed]);
 
-  /* ─────────── helpers ─────────── */
+  /* ─ helpers ─ */
   const updTruck = <K extends keyof Truck>(k: K, v: Truck[K]) => setTruck(p => ({ ...p, [k]: v }));
   const updCrate = (id: number, patch: Partial<CrateInput>) => setCrates(prev => prev.map(c => (c.id === id ? { ...c, ...patch } : c)));
-
   const snapshot = () => setHistory([JSON.parse(JSON.stringify(crates))]);
   const undo = () => history.length && (setCrates(history[0]), setHistory([]));
   const deleteCrate = (id: number) => { snapshot(); setCrates(prev => prev.filter(c => c.id !== id && c.stackTargetId !== id)); };
 
-  /* add crate helper */
-  const addCrateFromData = (data: ParsedRow) => setCrates(prev => [
+  const addCrateFromData = (data: ParsedRow) => setCrates(prev => ([
     ...prev,
     {
       id: prev.length ? Math.max(...prev.map(c => c.id)) + 1 : 1,
       label: data.label,
       length: data.length, lengthUnit: 'm',
-      width: data.width, widthUnit: 'm',
+      width: data.width,  widthUnit: 'm',
       height: data.height, heightUnit: 'm',
       weight: data.weight,
       colour: randomColour(),
       stackable: false,
     },
-  ]);
+  ]));
 
-  /* ─────────── XLSX upload handler ─────────── */
   const handleFile = (e: ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
     const file = e.target.files[0];
@@ -189,9 +169,8 @@ export default function App() {
         const width = Number(row.width || row.Width);
         const height = Number(row.height || row.Height);
         const weight = Number(row.weight || row.Weight);
-        if (label && length && width && height && weight) {
-          rows.push({ label, length, width, height, weight });
-        } else console.warn(`Row ${idx + 2} skipped`);
+        if (label && length && width && height && weight) rows.push({ label, length, width, height, weight });
+        else console.warn(`Row ${idx + 2} skipped`);
       });
       setParsedRows(rows); setRowSelection(new Set()); e.target.value = '';
     };
@@ -209,11 +188,11 @@ export default function App() {
     setParsedRows([]); setRowSelection(new Set());
   };
 
-  /* ─────────── constants for UI ─────────── */
+  /* ─ UI constants ─ */
   const dims: DimAxis[] = ['height', 'length', 'width'];
   const dimLabels: Record<DimAxis, string> = { height: 'H', length: 'L', width: 'W' };
 
-  /* ─────────── render ─────────── */
+  /* ─ render ─ */
   const truckLen = toMeters(truck.length, truck.unit);
   const truckWid = toMeters(truck.width, truck.unit);
   const truckHei = toMeters(truck.height, truck.unit);
@@ -221,22 +200,11 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-
       {/* banners */}
       {overflowIds.length > 0 && (
-        <div style={{ position:'absolute',top:0,left:0,right:0,padding:'6px 12px',background:'#c62828',color:'#fff',fontWeight:600,zIndex:50,textAlign:'center'}}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '6px 12px', background: '#c62828', color: '#fff', fontWeight: 600, zIndex: 50, textAlign: 'center' }}>
           ⚠️ Truck capacity (volume) exceeded by {overflowIds.map(id => crates.find(c => c.id === id)!.label).join(', ')}
         </div>
       )}
       {capacityReached && (
-        <div style={{ position:'absolute',top:32,left:0,right:0,padding:'6px 12px',background:'#f57c00',color:'#fff',fontWeight:600,zIndex:50,textAlign:'center'}}>
-          ⚠️ Max load reached ({totalWeight} kg / {truck.maxLoad} kg)
-        </div>
-      )}
-      {overlaps.length > 0 && (
-        <div style={{ position:'absolute',top:64,left:0,right:0,padding:'6px 12px',background:'#b71c1c',color:'#fff',fontWeight:600,zIndex:50,textAlign:'center'}}>
-          ⚠️ Overlapping crates: {overlaps.map(p => `${p[0]} & ${p[1]}`).join('; ')}
-        </div>
-      )}
-
-      <img src="/nav-help.png" alt="Mouse controls" style
+        <div style={{ position: 'absolute', top: 32, left: 0, right
