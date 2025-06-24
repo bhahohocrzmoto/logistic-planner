@@ -11,6 +11,7 @@ const rand = () => `#${Math.floor(Math.random() * 0xffffff).toString(16).padStar
 
 type Dim = 'height' | 'length' | 'width';
 const DIM: Record<Dim, string> = { height: 'H', length: 'L', width: 'W' };
+// unit‑field keys for TS casting
 type UnitKey = 'heightUnit' | 'lengthUnit' | 'widthUnit';
 
 // ─── data models ──────────────────────────────────────────────────────
@@ -32,21 +33,17 @@ const Banner: React.FC<{ color: string; top?: number; children?: ReactNode }> = 
   <div style={{ position: 'absolute', top, left: 0, right: 0, padding: 6, background: color, color: '#fff', fontWeight: 600, textAlign: 'center', zIndex: 50 }}>{children}</div>
 );
 
-// ─── packing algorithm (ground pass + stack pass) ────────────────────
+// ─── packing algorithm ────────────────────────────────────────────────
 function pack(truck: Truck, crates: Crate[]): { placed: Placed[]; overflow: number[] } {
   const placed: Placed[] = [], overflow: number[] = [];
   const L = toM(truck.length, truck.unit), W = toM(truck.width, truck.unit), H = toM(truck.height, truck.unit);
   let cursor = 0;
-
-  // Ground crates
   crates.filter(c => !c.stackTargetId).forEach(c => {
     const l = toM(c.length, c.lengthUnit), w = toM(c.width, c.widthUnit), h = toM(c.height, c.heightUnit);
     if (cursor + l > L || w > W || h > H) { overflow.push(c.id); return; }
     placed.push({ ...c, position: [cursor + l / 2, h / 2, w / 2] });
     cursor += l;
   });
-
-  // Stacked crates
   crates.filter(c => c.stackTargetId).forEach(c => {
     const base = placed.find(p => p.id === c.stackTargetId);
     if (!base) { overflow.push(c.id); return; }
@@ -55,13 +52,11 @@ function pack(truck: Truck, crates: Crate[]): { placed: Placed[]; overflow: numb
     if (y + h / 2 > H) { overflow.push(c.id); return; }
     placed.push({ ...c, position: [base.position[0], y, base.position[2]] });
   });
-
   return { placed, overflow };
 }
 
 // ─── main component ───────────────────────────────────────────────────
 export default function App() {
-  // state
   const [truck, setTruck] = useState<Truck>({ length: 10, width: 2.5, height: 2.6, unit: 'm', maxLoad: 1000 });
   const [crates, setCrates] = useState<Crate[]>([{
     id: 1, label: 'Crate 1', length: 1, lengthUnit: 'm', width: 1, widthUnit: 'm', height: 1, heightUnit: 'm', weight: 100, colour: rand(), stackable: false,
@@ -69,13 +64,12 @@ export default function App() {
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [sel, setSel] = useState<Set<number>>(new Set());
 
-  // derived
   const { placed, overflow } = useMemo(() => pack(truck, crates), [truck, crates]);
   const totalWeight = useMemo(() => crates.reduce((s, c) => s + c.weight, 0), [crates]);
   const capacity = truck.maxLoad !== undefined && totalWeight >= truck.maxLoad;
   const overlaps = useMemo(() => {
     const list: string[] = [];
-    for (let i = 0; i < placed.length; i++) for (let j = i + 1; j < placed.length; j++) {
+    for (let i = 0; i < placed.length - 1; i++) for (let j = i + 1; j < placed.length; j++) {
       const a = placed[i], b = placed[j];
       if (a.id === b.stackTargetId || b.id === a.stackTargetId) continue;
       const ax = toM(a.length, a.lengthUnit) / 2, ay = toM(a.height, a.heightUnit) / 2, az = toM(a.width, a.widthUnit) / 2;
@@ -86,7 +80,6 @@ export default function App() {
     return list;
   }, [placed]);
 
-  // actions
   const addCrate = (row?: ParsedRow) => setCrates(p => [...p, {
     id: p.length ? Math.max(...p.map(c => c.id)) + 1 : 1,
     label: row?.label ?? `Crate ${p.length + 1}`,
@@ -100,7 +93,6 @@ export default function App() {
   const upd = (id: number, patch: Partial<Crate>) => setCrates(p => p.map(c => c.id === id ? { ...c, ...patch } : c));
   const del = (id: number) => setCrates(p => p.filter(c => c.id !== id && c.stackTargetId !== id));
 
-  // import
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
     const r = new FileReader();
@@ -108,8 +100,7 @@ export default function App() {
       const wb = XLSX.read(ev.target!.result as ArrayBuffer);
       const js = XLSX.utils.sheet_to_json<ParsedRow>(wb.Sheets[wb.SheetNames[0]], { defval: '' });
       setRows(js); setSel(new Set());
-    };
-    r.readAsArrayBuffer(e.target.files[0]);
+    }; r.readAsArrayBuffer(e.target.files[0]);
   };
 
   const TL = toM(truck.length, truck.unit), TW = toM(truck.width, truck.unit), TH = toM(truck.height, truck.unit);
@@ -143,4 +134,23 @@ export default function App() {
 
         <h3>Crates</h3>
         {crates.map(c => (
-          <details key={
+          <details key={c.id} style={{ marginBottom: 6 }}>
+            <summary>{c.label}</summary>
+            {(['height','length','width'] as Dim[]).map(d => {
+              const uk = (d + 'Unit') as UnitKey;
+              return <p key={d}>{DIM[d]} <input type="number" style={{ width: 60 }} value={c[d]} onChange={e => upd(c.id, { [d]: +e.target.value } as any)} /> <select value={c[uk]} onChange={e => upd(c.id, { [uk]: e.target.value as Unit } as any)}><option value="m">m</option><option value="cm">cm</option></select></p>;
+            })}
+            <p>Weight <input type="number" style={{ width: 70 }} value={c.weight} onChange={e => upd(c.id, { weight: +e.target.value })}/> kg</p>
+            <p>Stackable <input type="checkbox" checked={c.stackable} onChange={e => upd(c.id, { stackable: e.target.checked, stackTargetId: e.target.checked ? c.stackTargetId : undefined })} /></p>
+            {c.stackable && (
+              <p>Stack on
+                <select value={c.stackTargetId ?? ''} onChange={e => upd(c.id, { stackTargetId: e.target.value ? +e.target.value : undefined })}>
+                  <option value="">floor</option>
+                  {crates.filter(b => b.id !== c.id && !occupied.has(b.id) && !b.stackTargetId).map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
+                </select>
+              </p>
+            )}
+            <button onClick={() => del(c.id)}>🗑 Delete</button>
+          </details>
+        ))}
+        <button disabled={capacity} onClick={() => addCrate()}>+ Crate</
