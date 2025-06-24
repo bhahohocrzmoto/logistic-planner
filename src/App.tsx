@@ -1,26 +1,31 @@
-/* App.tsx – compact <200 lines, compiles & preserves required features */
+/* App.tsx – fixed missing UnitKey type causing TS2304 */
 import React, { useState, useMemo, ChangeEvent } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Edges, Text } from '@react-three/drei';
 import * as XLSX from 'xlsx';
 
+// ─── helpers ──────────────────────────────────────────────────────────
 type Unit = 'm' | 'cm';
 const m = (v: number, u: Unit) => (u === 'cm' ? v / 100 : v);
 const rnd = () => `#${Math.random().toString(16).slice(2, 8).padStart(6, '0')}`;
 
-// models
+type Dim = 'height' | 'length' | 'width';
+const LBL: Record<Dim, string> = { height: 'H', length: 'L', width: 'W' };
+// NEW: explicit union for the "heightUnit" | "lengthUnit" | "widthUnit" keys
+type UnitKey = 'heightUnit' | 'lengthUnit' | 'widthUnit';
+
+// ─── data models ──────────────────────────────────────────────────────
 interface Truck { length: number; width: number; height: number; unit: Unit; maxLoad?: number; }
 interface Crate { id: number; label: string; length: number; lengthUnit: Unit; width: number; widthUnit: Unit; height: number; heightUnit: Unit; weight: number; colour: string; stackable: boolean; stackTargetId?: number; }
 interface Parsed { label: string; length: number; width: number; height: number; weight: number; }
 interface Placed extends Crate { position: [number, number, number]; }
 
-type Dim = 'height' | 'length' | 'width';
-const LBL: Record<Dim, string> = { height: 'H', length: 'L', width: 'W' };
+// ─── banner ───────────────────────────────────────────────────────────
+const Banner: React.FC<{ c: string; y?: number; msg: string }> = ({ c, y = 0, msg }) => (
+  <div style={{ position: 'absolute', top: y, left: 0, right: 0, padding: 6, background: c, color: '#fff', fontWeight: 600, textAlign: 'center', zIndex: 50 }}>{msg}</div>
+);
 
-// banner
-const Banner: React.FC<{ c: string; y?: number; msg: string }> = ({ c, y = 0, msg }) => <div style={{ position: 'absolute', top: y, left: 0, right: 0, padding: 6, background: c, color: '#fff', fontWeight: 600, textAlign: 'center', zIndex: 50 }}>{msg}</div>;
-
-// packer (two‑lane + stacking)
+// ─── packer (two‑lane + stacking) ─────────────────────────────────────
 function pack(t: Truck, crates: Crate[]): { placed: Placed[]; ov: number[] } {
   const p: Placed[] = [], ov: number[] = [], L = m(t.length, t.unit), W = m(t.width, t.unit), H = m(t.height, t.unit);
   let l1 = 0, l2 = 0;
@@ -39,14 +44,15 @@ function pack(t: Truck, crates: Crate[]): { placed: Placed[]; ov: number[] } {
   return { placed: p, ov };
 }
 
+// ─── component ────────────────────────────────────────────────────────
 export default function App() {
-  // state
+  /* state */
   const [truck, setTruck] = useState<Truck>({ length: 10, width: 2.5, height: 2.6, unit: 'm', maxLoad: 1000 });
   const [cr, setCr] = useState<Crate[]>([{ id: 1, label: 'Crate 1', length: 1, lengthUnit: 'm', width: 1, widthUnit: 'm', height: 1, heightUnit: 'm', weight: 100, colour: rnd(), stackable: false }]);
   const [rows, setRows] = useState<Parsed[]>([]);
   const [sel, setSel] = useState<Set<number>>(new Set());
 
-  // derived
+  /* derived */
   const { placed, ov } = useMemo(() => pack(truck, cr), [truck, cr]);
   const weight = cr.reduce((s, c) => s + c.weight, 0);
   const cap = truck.maxLoad !== undefined && weight >= truck.maxLoad;
@@ -61,18 +67,26 @@ export default function App() {
     return list;
   }, [placed]);
 
-  // helpers
+  /* helpers */
   const add = (r?: Parsed) => setCr([...cr, { id: cr.length ? Math.max(...cr.map(c => c.id)) + 1 : 1, label: r?.label ?? `Crate ${cr.length + 1}`, length: r?.length ?? 1, lengthUnit: 'm', width: r?.width ?? 1, widthUnit: 'm', height: r?.height ?? 1, heightUnit: 'm', weight: r?.weight ?? 50, colour: rnd(), stackable: false }]);
   const upd = (id: number, p: Partial<Crate>) => setCr(cr.map(c => (c.id === id ? { ...c, ...p } : c)));
   const del = (id: number) => setCr(cr.filter(c => c.id !== id && c.stackTargetId !== id));
 
-  // upload
+  /* upload */
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files?.length) return; const rd = new FileReader(); rd.onload = ev => { const js = XLSX.utils.sheet_to_json(XLSX.read(ev.target!.result as ArrayBuffer).Sheets['Sheet1'], { defval: '' }) as any[]; setRows(js.map(o => ({ label: o.label || o.Label, length: +o.length || +o.Length, width: +o.width || +o.Width, height: +o.height || +o.Height, weight: +o.weight || +o.Weight }))); }; rd.readAsArrayBuffer(e.target.files[0]); };
+    if (!e.target.files?.length) return;
+    const rd = new FileReader();
+    rd.onload = ev => {
+      const js = XLSX.utils.sheet_to_json(XLSX.read(ev.target!.result as ArrayBuffer).Sheets['Sheet1'], { defval: '' }) as any[];
+      setRows(js.map(o => ({ label: o.label || o.Label, length: +o.length || +o.Length, width: +o.width || +o.Width, height: +o.height || +o.Height, weight: +o.weight || +o.Weight })));
+    };
+    rd.readAsArrayBuffer(e.target.files[0]);
+  };
 
-  // dimensions constants
+  /* 3‑D constants */
   const TL = m(truck.length, truck.unit), TW = m(truck.width, truck.unit), TH = m(truck.height, truck.unit);
 
+  /* JSX */
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
       {ov.length > 0 && <Banner c="#c62828" msg={`Overflow: ${ov.map(id => cr.find(c => c.id === id)!.label).join(', ')}`} />}
@@ -82,26 +96,5 @@ export default function App() {
       {/* sidebar */}
       <aside style={{ width: 360, padding: 8, overflowY: 'auto', borderRight: '1px solid #ccc' }}>
         <h3>Truck</h3>
-        {(['height', 'length', 'width'] as Dim[]).map(d => <p key={d}>{LBL[d]} <input type="number" style={{ width: 60 }} value={truck[d]} onChange={e => setTruck({ ...truck, [d]: +e.target.value })} /> {truck.unit}</p>)}
-        <p>Unit <select value={truck.unit} onChange={e => setTruck({ ...truck, unit: e.target.value as Unit })}><option value="m">m</option><option value="cm">cm</option></select></p>
-        <p>Max load <input type="number" style={{ width: 70 }} value={truck.maxLoad ?? ''} onChange={e => setTruck({ ...truck, maxLoad: e.target.value ? +e.target.value : undefined })} /> kg</p>
-
-        <h3>Import</h3><input type="file" accept=".xls,.xlsx" onChange={onFile} />
-        {rows.length > 0 && <div>{rows.map((r, i) => <p key={i}><input type="checkbox" checked={sel.has(i)} onChange={e => { const s = new Set(sel); e.target.checked ? s.add(i) : s.delete(i); setSel(s); }} /> {r.label}</p>)}<button disabled={sel.size===0||cap} onClick={() => { sel.forEach(i => add(rows[i])); setRows([]); }}>Add</button></div>}
-
-        <h3>Crates</h3>
-        {cr.map(c => <details key={c.id}><summary>{c.label}</summary>{(['height','length','width'] as Dim[]).map(dim=>{const u=(dim+'Unit') as UnitKey;return <p key={dim}>{LBL[dim]} <input type="number" style={{width:60}} value={c[dim]} onChange={e=>upd(c.id,{[dim]:+e.target.value} as any)} /> <select value={c[u]} onChange={e=>upd(c.id,{[u]:e.target.value as Unit} as any)}><option value="m">m</option><option value="cm">cm</option></select></p>;})}<p>Wt <input type="number" style={{width:70}} value={c.weight} onChange={e=>upd(c.id,{weight:+e.target.value})}/> kg</p><button onClick={()=>del(c.id)}>🗑</button></details>)}
-        <button disabled={cap} onClick={()=>add()}>+ Crate</button>
-      </aside>
-
-      {/* 3D view */}
-      <Canvas shadows style={{ flex: 1 }} camera={{ position: [TL, TH*1.2, TW*1.4] }}>
-        <ambientLight intensity={0.5} />
-        <directionalLight position={[5, 10, 5]} intensity={0.8} castShadow />
-        <mesh rotation={[-Math.PI/2,0,0]} position={[TL/2,0,TW/2]}> <planeGeometry args={[TL, TW]} /> <meshStandardMaterial color="#ddd" /> </mesh>
-        {placed.map(c => { const l=m(c.length,c.lengthUnit), w=m(c.width,c.widthUnit), h=m(c.height,c.heightUnit); return <group key={c.id} position={c.position}><mesh castShadow><boxGeometry args={[l,h,w]} /><meshStandardMaterial color={c.colour} /><Edges /></mesh><Text rotation={[-Math.PI/2,0,0]} position={[0,h/2+0.02,0]} fontSize={Math.min(l,w)*0.18} color="#000">{c.label}</Text></group>; })}
-        <OrbitControls />
-      </Canvas>
-    </div>
-  );
-}
+        {(['height', 'length', 'width'] as Dim[]).map(d => (
+          <p key={d}>{LBL[d]} <input type="number" style
