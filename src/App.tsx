@@ -1,7 +1,7 @@
 /* App.tsx — React + @react-three/fiber logistic planner
    Restored original behaviour:
    ▸ Heavy‑first, left/right alternating floor placement for axle balance
-   ▸ Grey vertical panel marking truck front
+   ▸ Grey vertical panel marking truck front (FIXED orientation + position)
    ▸ Per‑crate colour picker & transparency slider
    ▸ Existing: max‑load lock, delete, H×L×W labels, stacking & overlap warnings */
 
@@ -185,62 +185,4 @@ export default function App() {
 
         <h3>Crates</h3>
         {crates.map(c => (
-          <details key={c.id} style={{ marginBottom: 8 }}>
-            <summary>{c.label} ({c.height}×{c.length}×{c.width}{c.heightUnit})</summary>
-            {(['height', 'length', 'width'] as Dim[]).map(dim => {
-              const uk = (dim + 'Unit') as keyof Crate;
-              return (
-                <p key={dim}>{DIM[dim]} <input type="number" style={{ width: 60 }} value={c[dim]} onChange={e => upd(c.id, { [dim]: +e.target.value } as any)} /> <select value={c[uk] as Unit} onChange={e => upd(c.id, { [uk]: e.target.value as Unit } as any)}>{UNITS.map(u => <option key={u} value={u}>{u}</option>)}</select></p>
-              );
-            })}
-            <p>Wt <input type="number" style={{ width: 80 }} value={c.weight} onChange={e => upd(c.id, { weight: +e.target.value })} /> kg</p>
-            <p>Colour <input type="color" value={c.colour} onChange={e => upd(c.id, { colour: e.target.value })} /> Opacity <input type="range" min={0.1} max={1} step={0.05} value={c.opacity} onChange={e => upd(c.id, { opacity: +e.target.value })} /></p>
-            {c.stackable && (
-              <p>Stack on <select value={c.stackTargetId ?? ''} onChange={e => upd(c.id, { stackTargetId: e.target.value ? +e.target.value : undefined })}>
-                <option value="">floor</option>
-                {crates.filter(b => b.id !== c.id && !b.stackTargetId && !crates.some(s => s.stackTargetId === b.id)).map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
-              </select></p>
-            )}
-            <button onClick={() => del(c.id)}>🗑 Delete</button>
-          </details>
-        ))}
-        <button disabled={capacityReached} onClick={() => addCrate()}>+ Add crate</button>
-      </aside>
-
-      {/* ─── 3‑D scene ────────────────────────────────────────────────── */}
-      <div style={{ flex: 1 }}>
-        <Canvas camera={{ position: [TL * 0.6, TH * 0.8, TW * 2], fov: 50 }}>
-          <ambientLight intensity={0.6} />
-          <directionalLight position={[5, 10, 7]} intensity={0.7} />
-
-          {/* ground */}
-          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[TL / 2, 0, TW / 2]}>
-            <planeGeometry args={[TL, TW]} />
-            <meshStandardMaterial color="#333" />
-          </mesh>
-          {/* front wall */}
-          <mesh position={[0, TH / 2, TW / 2]}>
-            <planeGeometry args={[TW, TH]} />
-            <meshStandardMaterial color="#888" side={2} />
-          </mesh>
-
-          {/* crates */}
-          {placed.map(p => {
-            const l = toM(p.length, p.lengthUnit);
-            const w = toM(p.width,  p.widthUnit);
-            const h = toM(p.height, p.heightUnit);
-            return (
-              <mesh key={p.id} position={p.position}>
-                <boxGeometry args={[l, h, w]} />
-                <meshStandardMaterial color={p.colour} transparent opacity={p.opacity} />
-                <Edges />
-              </mesh>
-            );
-          })}
-
-          <OrbitControls makeDefault />
-        </Canvas>
-      </div>
-    </div>
-  );
-}
+          <details key={c.id} style={{ marginBottom:
