@@ -1,4 +1,4 @@
-/* App.tsx — compile‑ready React + R3F logistic planner (stacking, capacity, overlap, overflow) */
+/* App.tsx — compile-ready React + R3F logistic planner (stacking, capacity, overlap, overflow) */
 import React, { useState, useMemo, ChangeEvent, ReactNode } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Edges, Text } from '@react-three/drei';
@@ -37,12 +37,14 @@ function pack(truck: Truck, crates: Crate[]): { placed: Placed[]; overflow: numb
   const placed: Placed[] = [], overflow: number[] = [];
   const L = toM(truck.length, truck.unit), W = toM(truck.width, truck.unit), H = toM(truck.height, truck.unit);
   let cursor = 0;
+  // ground layer
   crates.filter(c => !c.stackTargetId).forEach(c => {
     const l = toM(c.length, c.lengthUnit), w = toM(c.width, c.widthUnit), h = toM(c.height, c.heightUnit);
     if (cursor + l > L || w > W || h > H) { overflow.push(c.id); return; }
     placed.push({ ...c, position: [cursor + l / 2, h / 2, w / 2] });
     cursor += l;
   });
+  // stacked layer
   crates.filter(c => c.stackTargetId).forEach(c => {
     const base = placed.find(p => p.id === c.stackTargetId);
     if (!base) { overflow.push(c.id); return; }
@@ -67,7 +69,7 @@ export default function App() {
   // derived ------------------------------------------------------------
   const { placed, overflow } = useMemo(() => pack(truck, crates), [truck, crates]);
   const totalWeight = useMemo(() => crates.reduce((s, c) => s + c.weight, 0), [crates]);
-  const capacity = truck.maxLoad !== undefined && totalWeight >= truck.maxLoad;
+  const capacityReached = truck.maxLoad !== undefined && totalWeight >= truck.maxLoad;
   const overlaps = useMemo(() => {
     const list: string[] = [];
     for (let i = 0; i < placed.length - 1; i++) for (let j = i + 1; j < placed.length; j++) {
@@ -113,7 +115,7 @@ export default function App() {
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
       {overflow.length > 0 && <Banner color="#c62828">Overflow: {overflow.map(id => crates.find(c => c.id === id)!.label).join(', ')}</Banner>}
-      {capacity && <Banner color="#f57c00" top={32}>Max load {totalWeight}/{truck.maxLoad} kg</Banner>}
+      {capacityReached && <Banner color="#f57c00" top={32}>Max load {totalWeight}/{truck.maxLoad} kg</Banner>}
       {overlaps.length > 0 && <Banner color="#b71c1c" top={64}>Overlap: {overlaps.join('; ')}</Banner>}
 
       {/* ── SIDEBAR ── */}
@@ -123,4 +125,25 @@ export default function App() {
           <p key={d}>{DIM[d]} <input type="number" style={{ width: 60 }} value={truck[d]} onChange={e => setTruck({ ...truck, [d]: +e.target.value })}/> {truck.unit}</p>
         ))}
         <p>Unit <select value={truck.unit} onChange={e => setTruck({ ...truck, unit: e.target.value as Unit })}><option value="m">m</option><option value="cm">cm</option></select></p>
-        <p>Max load <input type="number" style
+        <p>Max load <input type="number" style={{ width: 70 }} value={truck.maxLoad ?? ''} onChange={e => setTruck({ ...truck, maxLoad: e.target.value ? +e.target.value : undefined })}/> kg</p>
+
+        <h4>Import</h4>
+        <input type="file" accept=".xls,.xlsx" onChange={onFile} />
+        {rows.length > 0 && (
+          <div style={{ border: '1px solid #ccc', padding: 6, marginTop: 6 }}>
+            {rows.map((r, i) => (
+              <p key={i}><input type="checkbox" checked={sel.has(i)} onChange={e => { const s=new Set(sel); e.target.checked?s.add(i):s.delete(i); setSel(s); }} /> {r.label}</p>
+            ))}
+            <button disabled={sel.size===0 || capacityReached} onClick={() => { sel.forEach(i => addCrate(rows[i])); setRows([]); setSel(new Set()); }}>Add selected</button>
+          </div>
+        )}
+
+        <h3>Crates</h3>
+        {crates.map(c => (
+          <details key={c.id} style={{ marginBottom: 6 }}>
+            <summary>{c.label}</summary>
+            {(['height','length','width'] as Dim[]).map(d => {
+              const uk = (d + 'Unit') as UnitKey;
+              return <p key={d}>{DIM[d]} <input type="number" style={{ width: 60 }} value={c[d]} onChange={e => upd(c.id, { [d]: +e.target.value } as any)} /> <select value={c[uk]} onChange={e => upd(c.id, { [uk]: e.target.value as Unit } as any)}><option value="m">m</option><option value="cm">cm</option></select></p>;
+            })}
+            <p>Weight <input type="number" style={{ width: 70 }} value={c.weight} onChange={e => upd(c.id, { weight
