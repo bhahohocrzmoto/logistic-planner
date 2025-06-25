@@ -11,7 +11,6 @@ const rand = () => `#${Math.floor(Math.random() * 0xffffff).toString(16).padStar
 
 type Dim = 'height' | 'length' | 'width';
 const DIM: Record<Dim, string> = { height: 'H', length: 'L', width: 'W' };
-// unit‑field keys for TS casting
 type UnitKey = 'heightUnit' | 'lengthUnit' | 'widthUnit';
 
 // ─── data models ──────────────────────────────────────────────────────
@@ -80,6 +79,7 @@ export default function App() {
     return list;
   }, [placed]);
 
+  // actions
   const addCrate = (row?: ParsedRow) => setCrates(p => [...p, {
     id: p.length ? Math.max(...p.map(c => c.id)) + 1 : 1,
     label: row?.label ?? `Crate ${p.length + 1}`,
@@ -93,6 +93,7 @@ export default function App() {
   const upd = (id: number, patch: Partial<Crate>) => setCrates(p => p.map(c => c.id === id ? { ...c, ...patch } : c));
   const del = (id: number) => setCrates(p => p.filter(c => c.id !== id && c.stackTargetId !== id));
 
+  // import file
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
     const r = new FileReader();
@@ -112,45 +113,11 @@ export default function App() {
       {capacity && <Banner color="#f57c00" top={32}>Max load {totalWeight}/{truck.maxLoad} kg</Banner>}
       {overlaps.length > 0 && <Banner color="#b71c1c" top={64}>Overlap: {overlaps.join('; ')}</Banner>}
 
-      {/* sidebar */}
+      {/* ── SIDEBAR ── */}
       <aside style={{ width: 380, padding: 12, overflowY: 'auto', borderRight: '1px solid #ddd' }}>
+        {/* Truck form */}
         <h3>Truck</h3>
         {(['height','length','width'] as Dim[]).map(d => (
           <p key={d}>{DIM[d]} <input type="number" style={{ width: 60 }} value={truck[d]} onChange={e => setTruck({ ...truck, [d]: +e.target.value })}/> {truck.unit}</p>
         ))}
-        <p>Unit <select value={truck.unit} onChange={e => setTruck({ ...truck, unit: e.target.value as Unit })}><option value="m">m</option><option value="cm">cm</option></select></p>
-        <p>Max load <input type="number" style={{ width: 70 }} value={truck.maxLoad ?? ''} onChange={e => setTruck({ ...truck, maxLoad: e.target.value ? +e.target.value : undefined })}/> kg</p>
-
-        <h4>Import</h4>
-        <input type="file" accept=".xls,.xlsx" onChange={onFile} />
-        {rows.length > 0 && (
-          <div style={{ border: '1px solid #ccc', padding: 6, marginTop: 6 }}>
-            {rows.map((r, i) => (
-              <p key={i}><input type="checkbox" checked={sel.has(i)} onChange={e => { const s=new Set(sel); e.target.checked?s.add(i):s.delete(i); setSel(s); }} /> {r.label}</p>
-            ))}
-            <button disabled={sel.size===0 || capacity} onClick={() => { sel.forEach(i => addCrate(rows[i])); setRows([]); setSel(new Set()); }}>Add selected</button>
-          </div>
-        )}
-
-        <h3>Crates</h3>
-        {crates.map(c => (
-          <details key={c.id} style={{ marginBottom: 6 }}>
-            <summary>{c.label}</summary>
-            {(['height','length','width'] as Dim[]).map(d => {
-              const uk = (d + 'Unit') as UnitKey;
-              return <p key={d}>{DIM[d]} <input type="number" style={{ width: 60 }} value={c[d]} onChange={e => upd(c.id, { [d]: +e.target.value } as any)} /> <select value={c[uk]} onChange={e => upd(c.id, { [uk]: e.target.value as Unit } as any)}><option value="m">m</option><option value="cm">cm</option></select></p>;
-            })}
-            <p>Weight <input type="number" style={{ width: 70 }} value={c.weight} onChange={e => upd(c.id, { weight: +e.target.value })}/> kg</p>
-            <p>Stackable <input type="checkbox" checked={c.stackable} onChange={e => upd(c.id, { stackable: e.target.checked, stackTargetId: e.target.checked ? c.stackTargetId : undefined })} /></p>
-            {c.stackable && (
-              <p>Stack on
-                <select value={c.stackTargetId ?? ''} onChange={e => upd(c.id, { stackTargetId: e.target.value ? +e.target.value : undefined })}>
-                  <option value="">floor</option>
-                  {crates.filter(b => b.id !== c.id && !occupied.has(b.id) && !b.stackTargetId).map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
-                </select>
-              </p>
-            )}
-            <button onClick={() => del(c.id)}>🗑 Delete</button>
-          </details>
-        ))}
-        <button disabled={capacity} onClick={() => addCrate()}>+ Crate</
+        <
