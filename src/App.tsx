@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import {
   OrbitControls,
@@ -7,7 +7,6 @@ import {
   GizmoViewport,
 } from "@react-three/drei";
 import { nanoid } from "nanoid";
-import "./styles.css";
 
 // ────────────────────────────────────────────────────────────────────────────────
 // Types
@@ -179,7 +178,7 @@ export default function App() {
                 color="#ffffff"
                 anchorX="center"
                 anchorY="middle"
-                rotation={[ -Math.PI / 2, 0, 0 ]}
+                rotation={[-Math.PI / 2, 0, 0]}
               >
                 {c.label}
               </Text>
