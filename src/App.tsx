@@ -1,4 +1,4 @@
-/* App.tsx — compile‑ready React + R3F logistic planner */
+/* App.tsx — compile‑ready React + react‑three‑fiber logistic planner */
 import React, { useState, useMemo, ChangeEvent, ReactNode } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Edges } from '@react-three/drei';
@@ -130,28 +130,4 @@ export default function App() {
       <aside style={{ width: 380, padding: 12, overflowY: 'auto', borderRight: '1px solid #ddd' }}>
         <h3>Truck</h3>
         {(['height','length','width'] as Dim[]).map(d => (
-          <p key={d}>{DIM[d]} <input type="number" style={{ width: 60 }} value={truck[d]} onChange={e => setTruck({ ...truck, [d]: +e.target.value })}/> {truck.unit}</p>
-        ))}
-        <p>Unit <select value={truck.unit} onChange={e => setTruck({ ...truck, unit: e.target.value as Unit })}><option value="m">m</option><option value="cm">cm</option></select></p>
-        <p>Max load <input type="number" style={{ width: 80 }} value={truck.maxLoad ?? ''} onChange={e => setTruck({ ...truck, maxLoad: e.target.value ? +e.target.value : undefined })}/> kg</p>
-
-        {/* Import section */}
-        <h4>Import</h4>
-        <input type="file" accept=".xls,.xlsx" onChange={onFile} />
-        {rows.length > 0 && (
-          <div style={{ border: '1px solid #ccc', padding: 6, marginTop: 6 }}>
-            {rows.map((r, i) => (
-              <p key={i}><input type="checkbox" checked={sel.has(i)} onChange={e => { const s=new Set(sel); e.target.checked?s.add(i):s.delete(i); setSel(s);} }/> {r.label}</p>
-            ))}
-            <button disabled={sel.size===0 || capacityReached} onClick={() => { sel.forEach(i => addCrate(rows[i])); setRows([]); setSel(new Set()); }}>Add selected</button>
-          </div>
-        )}
-
-        {/* Crate editor */}
-        <h3>Crates</h3>
-        {crates.map(c => (
-          <details key={c.id} style={{ marginBottom: 6 }}>
-            <summary>{c.label}</summary>
-            {(['height','length','width'] as Dim[]).map(d => {
-              const uk = (d + 'Unit') as UnitKey;
-              return <p key={d}>{DIM[d]} <input type="number" style={{ width: 60 }} value={c[d]} onChange={e => upd(c
+          <p key={d}>{DIM[d]} <input type="number" style={{ width: 60 }} value={truck[d]} onChange={e => set
