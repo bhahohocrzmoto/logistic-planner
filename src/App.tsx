@@ -56,6 +56,7 @@ function pack(truck: Truck, crates: Crate[]): { placed: Placed[]; overflow: numb
 
 // ─── main component ───────────────────────────────────────────────────
 export default function App() {
+  // state --------------------------------------------------------------
   const [truck, setTruck] = useState<Truck>({ length: 10, width: 2.5, height: 2.6, unit: 'm', maxLoad: 1000 });
   const [crates, setCrates] = useState<Crate[]>([{
     id: 1, label: 'Crate 1', length: 1, lengthUnit: 'm', width: 1, widthUnit: 'm', height: 1, heightUnit: 'm', weight: 100, colour: rand(), stackable: false,
@@ -63,6 +64,7 @@ export default function App() {
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [sel, setSel] = useState<Set<number>>(new Set());
 
+  // derived ------------------------------------------------------------
   const { placed, overflow } = useMemo(() => pack(truck, crates), [truck, crates]);
   const totalWeight = useMemo(() => crates.reduce((s, c) => s + c.weight, 0), [crates]);
   const capacity = truck.maxLoad !== undefined && totalWeight >= truck.maxLoad;
@@ -79,7 +81,7 @@ export default function App() {
     return list;
   }, [placed]);
 
-  // actions
+  // actions ------------------------------------------------------------
   const addCrate = (row?: ParsedRow) => setCrates(p => [...p, {
     id: p.length ? Math.max(...p.map(c => c.id)) + 1 : 1,
     label: row?.label ?? `Crate ${p.length + 1}`,
@@ -93,7 +95,7 @@ export default function App() {
   const upd = (id: number, patch: Partial<Crate>) => setCrates(p => p.map(c => c.id === id ? { ...c, ...patch } : c));
   const del = (id: number) => setCrates(p => p.filter(c => c.id !== id && c.stackTargetId !== id));
 
-  // import file
+  // import file --------------------------------------------------------
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
     const r = new FileReader();
@@ -107,6 +109,7 @@ export default function App() {
   const TL = toM(truck.length, truck.unit), TW = toM(truck.width, truck.unit), TH = toM(truck.height, truck.unit);
   const occupied = new Set(crates.filter(c => c.stackTargetId).map(c => c.stackTargetId!));
 
+  // ─── render ---------------------------------------------------------
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
       {overflow.length > 0 && <Banner color="#c62828">Overflow: {overflow.map(id => crates.find(c => c.id === id)!.label).join(', ')}</Banner>}
@@ -115,9 +118,9 @@ export default function App() {
 
       {/* ── SIDEBAR ── */}
       <aside style={{ width: 380, padding: 12, overflowY: 'auto', borderRight: '1px solid #ddd' }}>
-        {/* Truck form */}
         <h3>Truck</h3>
         {(['height','length','width'] as Dim[]).map(d => (
           <p key={d}>{DIM[d]} <input type="number" style={{ width: 60 }} value={truck[d]} onChange={e => setTruck({ ...truck, [d]: +e.target.value })}/> {truck.unit}</p>
         ))}
-        <
+        <p>Unit <select value={truck.unit} onChange={e => setTruck({ ...truck, unit: e.target.value as Unit })}><option value="m">m</option><option value="cm">cm</option></select></p>
+        <p>Max load <input type="number" style
