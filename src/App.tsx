@@ -1,4 +1,5 @@
-/* App.tsx — compile‑ready React + react‑three‑fiber logistic planner */
+/* App.tsx — Compile‑ready React + react‑three‑fiber logistic planner
+   Implements: max‑load cap, crate delete, H×L×W labels, stacking, overlap check */
 import React, { useState, useMemo, ChangeEvent, ReactNode } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Edges } from '@react-three/drei';
@@ -58,25 +59,18 @@ function pack(truck: Truck, crates: Crate[]): { placed: Placed[]; overflow: numb
 
 // ─── main component ───────────────────────────────────────────────────
 export default function App() {
-  // state
+  // state ----------------------------------------------------------------
   const [truck, setTruck] = useState<Truck>({ length: 10, width: 2.5, height: 2.6, unit: 'm', maxLoad: 1000 });
   const [crates, setCrates] = useState<Crate[]>([{
-    id: 1,
-    label: 'Crate 1',
-    length: 1, lengthUnit: 'm',
-    width: 1,  widthUnit: 'm',
-    height: 1, heightUnit: 'm',
-    weight: 100,
-    colour: rand(),
-    stackable: false,
+    id: 1, label: 'Crate 1', length: 1, lengthUnit: 'm', width: 1, widthUnit: 'm', height: 1, heightUnit: 'm', weight: 100, colour: rand(), stackable: false,
   }]);
-  const [rows, setRows] = useState<ParsedRow[]>([]);
-  const [sel, setSel]   = useState<Set<number>>(new Set());
+  const [rows, setRows]  = useState<ParsedRow[]>([]);
+  const [sel, setSel]    = useState<Set<number>>(new Set());
 
-  // derived
+  // derived -------------------------------------------------------------
   const { placed, overflow } = useMemo(() => pack(truck, crates), [truck, crates]);
   const totalWeight = useMemo(() => crates.reduce((s, c) => s + c.weight, 0), [crates]);
-  const capacityReached = truck.maxLoad !== undefined && totalWeight >= truck.maxLoad!;
+  const capacityReached = truck.maxLoad !== undefined && totalWeight >= truck.maxLoad;
   const overlaps = useMemo(() => {
     const list: string[] = [];
     for (let i = 0; i < placed.length - 1; i++) for (let j = i + 1; j < placed.length; j++) {
@@ -90,7 +84,7 @@ export default function App() {
     return list;
   }, [placed]);
 
-  // actions
+  // actions -------------------------------------------------------------
   const addCrate = (row?: ParsedRow) => setCrates(p => [...p, {
     id: p.length ? Math.max(...p.map(c => c.id)) + 1 : 1,
     label: row?.label ?? `Crate ${p.length + 1}`,
@@ -104,7 +98,7 @@ export default function App() {
   const upd = (id: number, patch: Partial<Crate>) => setCrates(p => p.map(c => c.id === id ? { ...c, ...patch } : c));
   const del = (id: number) => setCrates(p => p.filter(c => c.id !== id && c.stackTargetId !== id));
 
-  // file import
+  // file import ---------------------------------------------------------
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
     const r = new FileReader();
@@ -119,7 +113,7 @@ export default function App() {
   const TL = toM(truck.length, truck.unit), TW = toM(truck.width, truck.unit), TH = toM(truck.height, truck.unit);
   const occupiedBases = new Set(crates.filter(c => c.stackTargetId).map(c => c.stackTargetId!));
 
-  // render
+  // render --------------------------------------------------------------
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
       {overflow.length > 0 && <Banner color="#c62828">Overflow: {overflow.map(id => crates.find(c => c.id === id)!.label).join(', ')}</Banner>}
@@ -130,4 +124,22 @@ export default function App() {
       <aside style={{ width: 380, padding: 12, overflowY: 'auto', borderRight: '1px solid #ddd' }}>
         <h3>Truck</h3>
         {(['height','length','width'] as Dim[]).map(d => (
-          <p key={d}>{DIM[d]} <input type="number" style={{ width: 60 }} value={truck[d]} onChange={e => set
+          <p key={d}>{DIM[d]} <input type="number" style={{ width: 60 }} value={truck[d]} onChange={e => setTruck({ ...truck, [d]: +e.target.value } as Truck)} /> {truck.unit}</p>
+        ))}
+        <p>Unit <select value={truck.unit} onChange={e => setTruck({ ...truck, unit: e.target.value as Unit })}><option value="m">m</option><option value="cm">cm</option></select></p>
+        <p>Max load <input type="number" style={{ width: 80 }} value={truck.maxLoad ?? ''} onChange={e => setTruck({ ...truck, maxLoad: e.target.value ? +e.target.value : undefined })}/> kg</p>
+
+        <h4>Import from Excel</h4>
+        <input type="file" accept=".xls,.xlsx" onChange={onFile} />
+        {rows.length > 0 && (
+          <div style={{ border: '1px solid #ccc', padding: 6, marginTop: 6 }}>
+            {rows.map((r, i) => (
+              <p key={i}><input type="checkbox" checked={sel.has(i)} onChange={e => { const s=new Set(sel); e.target.checked?s.add(i):s.delete(i); setSel(s); }} /> {r.label}</p>
+            ))}
+            <button disabled={sel.size===0 || capacityReached} onClick={() => { sel.forEach(i => addCrate(rows[i])); setRows([]); setSel(new Set()); }}>Add selected</button>
+          </div>
+        )}
+
+        <h3>Crates</h3>
+        {crates.map(c => (
+          <details key={
