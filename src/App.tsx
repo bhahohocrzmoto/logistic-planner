@@ -88,15 +88,16 @@ export default function App() {
 
   // ─── UI ──────────────────────────────────────────────────────────────────────
   return (
-    <div style={{ display: "flex" }}>
+    // Ensure the root flex container always has height so the Canvas is visible
+    <div style={{ display: "flex", height: "100vh", width: "100vw" }}>
       {/* sidebar */}
-      <aside style={{ width: 300, padding: 10, fontFamily: "sans-serif", fontSize: 14 }}>
+      <aside style={{ width: 300, padding: 10, fontFamily: "sans-serif", fontSize: 14, overflowY: "auto" }}>
         <button style={{ width: "100%", marginBottom: 6 }} disabled={!history.length} onClick={undo}>
           ⤺ Undo
         </button>
         <h3>Crates</h3>
         {crates.map((c, idx) => (
-          <details key={c.id} style={{ marginBottom: 4 }} open={false}>
+          <details key={c.id} style={{ marginBottom: 4 }}>
             <summary>
               Crate {idx + 1} ({c.length}×{c.width}×{c.height}m)
             </summary>
@@ -153,7 +154,7 @@ export default function App() {
         </button>
       </aside>
 
-      {/* 3D canvase */}
+      {/* 3D canvas */}
       <Canvas style={{ flex: 1 }} camera={{ position: [8, 6, 10], fov: 45 }} shadows>
         <ambientLight intensity={0.5} />
         <directionalLight position={[5, 10, 5]} intensity={0.8} castShadow />
