@@ -1,5 +1,10 @@
-/* App.tsx — React + @react-three/fiber logistic planner
-   Features: max‑load capacity warning & lock, crate delete button, H×L×W labels, stacking logic, overlap detection. */
+/* App.tsx — React + @react‑three/fiber logistic planner
+   Restored original behaviour:
+   ▸ Heavy‑first, left/right alternating floor placement for axle balance
+   ▸ Grey vertical panel marking truck front
+   ▸ Per‑crate colour picker & transparency slider
+   ▸ Existing: max‑load lock, delete, H×L×W labels, stacking & overlap warnings */
+
 import React, { useState, useMemo, ChangeEvent, ReactNode } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Edges } from '@react-three/drei';
@@ -14,8 +19,6 @@ type Dim = 'height' | 'length' | 'width';
 const DIM: Record<Dim, string> = { height: 'H', length: 'L', width: 'W' };
 const UNITS: Unit[] = ['m', 'cm'];
 
-type UnitKey = 'heightUnit' | 'lengthUnit' | 'widthUnit';
-
 // ─── data models ──────────────────────────────────────────────────────
 interface Truck { length: number; width: number; height: number; unit: Unit; maxLoad?: number; }
 interface Crate {
@@ -23,9 +26,9 @@ interface Crate {
   length: number; lengthUnit: Unit;
   width:  number; widthUnit:  Unit;
   height: number; heightUnit: Unit;
-  weight: number; colour: string;
+  weight: number; colour: string; opacity: number;
   stackable: boolean;
-  stackTargetId?: number; // undefined ⇒ sits on floor
+  stackTargetId?: number; // undefined ⇒ on floor
 }
 interface ParsedRow { label: string; length: number; width: number; height: number; weight: number; }
 interface Placed extends Crate { position: [number, number, number]; }
@@ -35,21 +38,43 @@ const Banner: React.FC<{ color: string; top?: number; children?: ReactNode }> = 
   <div style={{ position: 'absolute', top, left: 0, right: 0, padding: 6, background: color, color: '#fff', fontWeight: 600, textAlign: 'center', zIndex: 50 }}>{children}</div>
 );
 
-// ─── simple packing / stacking algorithm ──────────────────────────────
+// ─── balanced packing algorithm ───────────────────────────────────────
 function pack(truck: Truck, crates: Crate[]): { placed: Placed[]; overflow: number[] } {
   const placed: Placed[] = [], overflow: number[] = [];
   const L = toM(truck.length, truck.unit), W = toM(truck.width, truck.unit), H = toM(truck.height, truck.unit);
-  let cursor = 0; // x‑axis cursor along truck length (front→back)
 
-  // first: crates on floor (no stackTarget)
-  crates.filter(c => !c.stackTargetId).forEach(c => {
+  // sort heavy‑to‑light to keep weight at the front
+  const floorCrates = crates.filter(c => !c.stackTargetId).sort((a, b) => b.weight - a.weight);
+  let cursorX = 0;         // distance from front (x‑axis)
+  let leftSide = true;      // toggle for left/right placement
+
+  let pendingLeftLength = 0; // remember longest left crate to advance cursor once right crate placed
+
+  floorCrates.forEach((c, idx) => {
     const l = toM(c.length, c.lengthUnit), w = toM(c.width, c.widthUnit), h = toM(c.height, c.heightUnit);
-    if (cursor + l > L || w > W || h > H) { overflow.push(c.id); return; }
-    placed.push({ ...c, position: [cursor + l / 2, h / 2, w / 2] });
-    cursor += l;
-  });
+    if (l > L || w > W || h > H) { overflow.push(c.id); return; }
 
-  // then: stacked crates (stackTargetId exists)
+    // z‑pos: left = flush to left wall, right = flush to right wall
+    const zPos = leftSide ? w / 2 : W - w / 2;
+    const xPos = cursorX + l / 2;
+    if (xPos + l / 2 > L) { overflow.push(c.id); return; }
+
+    placed.push({ ...c, position: [xPos, h / 2, zPos] });
+
+    if (leftSide) {
+      // store length until its right counterpart placed
+      pendingLeftLength = l > pendingLeftLength ? l : pendingLeftLength;
+    } else {
+      // after right crate placed, advance cursor by max of the pair
+      cursorX += Math.max(pendingLeftLength, l);
+      pendingLeftLength = 0;
+    }
+    leftSide = !leftSide;
+  });
+  // if odd number of crates, advance cursor by the remaining left length
+  if (!leftSide) cursorX += pendingLeftLength;
+
+  // stacked crates — keep original order, but still centred over target
   crates.filter(c => c.stackTargetId).forEach(c => {
     const base = placed.find(p => p.id === c.stackTargetId);
     if (!base) { overflow.push(c.id); return; }
@@ -67,7 +92,7 @@ export default function App() {
   // state ---------------------------------------------------------------
   const [truck, setTruck] = useState<Truck>({ length: 10, width: 2.5, height: 2.6, unit: 'm', maxLoad: 1000 });
   const [crates, setCrates] = useState<Crate[]>([{
-    id: 1, label: 'Crate 1', length: 1, lengthUnit: 'm', width: 1, widthUnit: 'm', height: 1, heightUnit: 'm', weight: 200, colour: rand(), stackable: false,
+    id: 1, label: 'Crate 1', length: 1, lengthUnit: 'm', width: 1, widthUnit: 'm', height: 1, heightUnit: 'm', weight: 200, colour: rand(), opacity: 0.85, stackable: false,
   }]);
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [sel, setSel]   = useState<Set<number>>(new Set());
@@ -78,15 +103,13 @@ export default function App() {
   const capacityReached = truck.maxLoad !== undefined && totalWeight >= truck.maxLoad;
   const overlaps = useMemo(() => {
     const list: string[] = [];
-    for (let i = 0; i < placed.length; i++) {
-      for (let j = i + 1; j < placed.length; j++) {
-        const a = placed[i], b = placed[j];
-        if (a.id === b.stackTargetId || b.id === a.stackTargetId) continue; // ignore vertical pairs
-        const ax = toM(a.length, a.lengthUnit) / 2, ay = toM(a.height, a.heightUnit) / 2, az = toM(a.width, a.widthUnit) / 2;
-        const bx = toM(b.length, b.lengthUnit) / 2, by = toM(b.height, b.heightUnit) / 2, bz = toM(b.width, b.widthUnit) / 2;
-        if (Math.abs(a.position[0] - b.position[0]) < ax + bx && Math.abs(a.position[1] - b.position[1]) < ay + by && Math.abs(a.position[2] - b.position[2]) < az + bz)
-          list.push(`${a.label} & ${b.label}`);
-      }
+    for (let i = 0; i < placed.length; i++) for (let j = i + 1; j < placed.length; j++) {
+      const a = placed[i], b = placed[j];
+      if (a.id === b.stackTargetId || b.id === a.stackTargetId) continue;
+      const ax = toM(a.length,a.lengthUnit)/2, ay = toM(a.height,a.heightUnit)/2, az = toM(a.width,a.widthUnit)/2;
+      const bx = toM(b.length,b.lengthUnit)/2, by = toM(b.height,b.heightUnit)/2, bz = toM(b.width,b.widthUnit)/2;
+      if (Math.abs(a.position[0]-b.position[0])<ax+bx && Math.abs(a.position[1]-b.position[1])<ay+by && Math.abs(a.position[2]-b.position[2])<az+bz)
+        list.push(`${a.label} & ${b.label}`);
     }
     return list;
   }, [placed]);
@@ -99,7 +122,7 @@ export default function App() {
     width:  row?.width  ?? 1, widthUnit:  'm',
     height: row?.height ?? 1, heightUnit: 'm',
     weight: row?.weight ?? 50,
-    colour: rand(),
+    colour: rand(), opacity: 0.85,
     stackable: true,
   }]);
   const upd = (id: number, patch: Partial<Crate>) => setCrates(arr => arr.map(c => c.id === id ? { ...c, ...patch } : c));
@@ -123,76 +146,36 @@ export default function App() {
   // render --------------------------------------------------------------
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
-      {/* banners */}
-      {overflow.length > 0 && <Banner color="#c62828">Overflow: {overflow.map(id => crates.find(c => c.id === id)!.label).join(', ')}</Banner>}
+      {overflow.length > 0 && <Banner color="#c62828">Overflow: {overflow.map(id=>crates.find(c=>c.id===id)!.label).join(', ')}</Banner>}
       {capacityReached && <Banner color="#f57c00" top={32}>Max load {totalWeight}/{truck.maxLoad} kg</Banner>}
       {overlaps.length > 0 && <Banner color="#b71c1c" top={64}>Overlap: {overlaps.join('; ')}</Banner>}
 
       {/* sidebar */}
-      <aside style={{ width: 380, padding: 12, overflowY: 'auto', borderRight: '1px solid #ddd' }}>
+      <aside style={{ width: 400, padding: 12, overflowY: 'auto', borderRight: '1px solid #ddd' }}>
         <h3>Truck</h3>
-        {(['height','length','width'] as Dim[]).map(dim => (
-          <p key={dim}>{DIM[dim]} <input type="number" style={{ width: 60 }} value={truck[dim]} onChange={e => setTruck({ ...truck, [dim]: +e.target.value } as Truck)} /> {truck.unit}</p>
+        {(['height','length','width'] as Dim[]).map(dim=> (
+          <p key={dim}>{DIM[dim]} <input type="number" style={{ width: 70 }} value={truck[dim]} onChange={e=>setTruck({ ...truck, [dim]: +e.target.value } as Truck)} /> {truck.unit}</p>
         ))}
-        <p>Unit <select value={truck.unit} onChange={e => setTruck({ ...truck, unit: e.target.value as Unit })}>{UNITS.map(u => <option key={u} value={u}>{u}</option>)}</select></p>
-        <p>Max load <input type="number" style={{ width: 90 }} value={truck.maxLoad ?? ''} onChange={e => setTruck({ ...truck, maxLoad: e.target.value ? +e.target.value : undefined })}/> kg</p>
+        <p>Unit <select value={truck.unit} onChange={e=>setTruck({ ...truck, unit: e.target.value as Unit })}>{UNITS.map(u=><option key={u} value={u}>{u}</option>)}</select></p>
+        <p>Max load <input type="number" style={{ width: 100 }} value={truck.maxLoad ?? ''} onChange={e=>setTruck({ ...truck, maxLoad: e.target.value?+e.target.value:undefined })}/> kg</p>
 
         <h4>Import crates (Excel)</h4>
         <input type="file" accept=".xls,.xlsx" onChange={onFile} />
-        {rows.length > 0 && (
-          <div style={{ border: '1px solid #ccc', padding: 6, marginTop: 6 }}>
-            {rows.map((r,i)=> (
-              <p key={i}><input type="checkbox" checked={sel.has(i)} onChange={e=>{const s=new Set(sel); e.target.checked?s.add(i):s.delete(i); setSel(s);}}/> {r.label}</p>
-            ))}
-            <button disabled={sel.size===0 || capacityReached} onClick={()=>{sel.forEach(i=>addCrate(rows[i])); setRows([]); setSel(new Set());}}>Add selected</button>
-          </div>
-        )}
+        {rows.length>0 && (<div style={{ border:'1px solid #ccc', padding:6, marginTop:6 }}>
+          {rows.map((r,i)=>(<p key={i}><input type="checkbox" checked={sel.has(i)} onChange={e=>{const s=new Set(sel);e.target.checked?s.add(i):s.delete(i);setSel(s);}}/> {r.label}</p>))}
+          <button disabled={sel.size===0||capacityReached} onClick={()=>{sel.forEach(i=>addCrate(rows[i])); setRows([]); setSel(new Set());}}>Add selected</button>
+        </div>)}
 
         <h3>Crates</h3>
-        {crates.map(c => (
-          <details key={c.id} style={{ marginBottom: 8 }}>
+        {crates.map(c=>(
+          <details key={c.id} style={{ marginBottom:8 }}>
             <summary>{c.label} ({c.height}×{c.length}×{c.width}{c.heightUnit})</summary>
-            {(['height','length','width'] as Dim[]).map(dim => {
-              const uk = (dim+'Unit') as UnitKey;
-              return <p key={dim}>{DIM[dim]} <input type="number" style={{ width: 60 }} value={c[dim]} onChange={e=>upd(c.id, { [dim]: +e.target.value } as Partial<Crate>)} /> <select value={c[uk]} onChange={e=>upd(c.id, { [uk]: e.target.value as Unit } as Partial<Crate>)}>{UNITS.map(u=><option key={u} value={u}>{u}</option>)}</select></p>;
+            {(['height','length','width'] as Dim[]).map(dim=>{
+              const uk=(dim+'Unit') as keyof Crate;
+              return <p key={dim}>{DIM[dim]} <input type="number" style={{ width:60 }} value={c[dim]} onChange={e=>upd(c.id,{ [dim]: +e.target.value } )}/> <select value={c[uk] as Unit} onChange={e=>upd(c.id,{ [uk]: e.target.value as Unit } )}>{UNITS.map(u=><option key={u} value={u}>{u}</option>)}</select></p>;
             })}
-            <p>Wt <input type="number" style={{ width: 70 }} value={c.weight} onChange={e => upd(c.id, { weight: +e.target.value })}/> kg</p>
-            {c.stackable && (
-              <p>Stack on <select value={c.stackTargetId ?? ''} onChange={e => upd(c.id, { stackTargetId: e.target.value? +e.target.value : undefined })}>
-                <option value="">floor</option>
-                {crates.filter(b => b.id !== c.id && !b.stackTargetId && !crates.some(s => s.stackTargetId === b.id)).map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
-              </select></p>
-            )}
-            <button onClick={()=>del(c.id)}>🗑 Delete</button>
-          </details>
-        ))}
-        <button disabled={capacityReached} onClick={()=>addCrate()}>+ Add crate</button>
-      </aside>
-
-      {/* 3‑D view */}
-      <div style={{ flex: 1 }}>
-        <Canvas shadows camera={{ position: [TL/2, TH, TW*2], fov: 50 }}>
-          <ambientLight intensity={0.6} />
-          <pointLight position={[0, TH, 0]} intensity={0.4} />
-
-          {/* truck floor */}
-          <mesh position={[TL/2, 0, TW/2]} rotation={[-Math.PI/2, 0, 0]} receiveShadow>
-            <planeGeometry args={[TL, TW]} />
-            <meshStandardMaterial color="#999" />
-          </mesh>
-
-          {/* crates */}
-          {placed.map(p => (
-            <mesh key={p.id} position={p.position} castShadow>
-              <boxGeometry args={[toM(p.length,p.lengthUnit), toM(p.height,p.heightUnit), toM(p.width,p.widthUnit)]} />
-              <meshStandardMaterial color={p.colour} transparent opacity={0.85} />
-              <Edges />
-            </mesh>
-          ))}
-
-          <OrbitControls target={[TL/2, TH/2, TW/2]} />
-        </Canvas>
-      </div>
-    </div>
-  );
-}
+            <p>Wt <input type="number" style={{ width:80 }} value={c.weight} onChange={e=>upd(c.id,{ weight:+e.target.value })}/> kg</p>
+            <p>Colour <input type="color" value={c.colour} onChange={e=>upd(c.id,{ colour:e.target.value })}/> Opacity <input type="range" min={0.1} max={1} step={0.05} value={c.opacity} onChange={e=>upd(c.id,{ opacity:+e.target.value })}/></p>
+            {c.stackable && <p>Stack on <select value={c.stackTargetId??''} onChange={e=>upd(c.id,{ stackTargetId:e.target.value?+e.target.value:undefined })}>
+              <option value="">floor</option>
+              {crates.filter(b=>b.id!==c.id&&!b.stackTargetId&&!crates.some(s=>s.stackTargetId===b.id)).map(b=><option key={b.id} value={b.id}>{b
