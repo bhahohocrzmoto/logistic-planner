@@ -1,5 +1,5 @@
-/* App.tsx — React + @react-three/fiber logistic planner
-   Restored original behaviour:
+/* App.tsx — React + @react-three/fiber logistic‑planner
+   Restored original behaviour + fixed syntax truncation
    ▸ Heavy‑first, left/right alternating floor placement for axle balance
    ▸ Grey vertical panel marking truck front (FIXED orientation + position)
    ▸ Per‑crate colour picker & transparency slider
@@ -45,15 +45,14 @@ function pack(truck: Truck, crates: Crate[]): { placed: Placed[]; overflow: numb
 
   // sort heavy‑to‑light to keep weight at the front
   const floorCrates = crates.filter(c => !c.stackTargetId).sort((a, b) => b.weight - a.weight);
-  let cursorX = 0;         // distance from front (x‑axis)
-  let leftSide = true;      // toggle for left/right placement
-  let pendingLeftLength = 0; // remember longest left crate to advance cursor once right crate placed
+  let cursorX = 0;               // distance from front (x‑axis)
+  let leftSide = true;           // toggle for left/right placement
+  let pendingLeftLen = 0;        // remember longest left crate length
 
   floorCrates.forEach(c => {
     const l = toM(c.length, c.lengthUnit), w = toM(c.width, c.widthUnit), h = toM(c.height, c.heightUnit);
     if (l > L || w > W || h > H) { overflow.push(c.id); return; }
 
-    // z‑pos: left = flush to left wall, right = flush to right wall
     const zPos = leftSide ? w / 2 : W - w / 2;
     const xPos = cursorX + l / 2;
     if (xPos + l / 2 > L) { overflow.push(c.id); return; }
@@ -61,14 +60,14 @@ function pack(truck: Truck, crates: Crate[]): { placed: Placed[]; overflow: numb
     placed.push({ ...c, position: [xPos, h / 2, zPos] });
 
     if (leftSide) {
-      pendingLeftLength = Math.max(pendingLeftLength, l);
+      pendingLeftLen = Math.max(pendingLeftLen, l);
     } else {
-      cursorX += Math.max(pendingLeftLength, l);
-      pendingLeftLength = 0;
+      cursorX += Math.max(pendingLeftLen, l);
+      pendingLeftLen = 0;
     }
     leftSide = !leftSide;
   });
-  if (!leftSide) cursorX += pendingLeftLength; // odd number correction
+  if (!leftSide) cursorX += pendingLeftLen; // odd number correction
 
   // stacked crates
   crates.filter(c => c.stackTargetId).forEach(c => {
@@ -85,7 +84,7 @@ function pack(truck: Truck, crates: Crate[]): { placed: Placed[]; overflow: numb
 
 // ─── main component ───────────────────────────────────────────────────
 export default function App() {
-  // state ---------------------------------------------------------------
+  // state --------------------------------------------------------------
   const [truck, setTruck] = useState<Truck>({ length: 10, width: 2.5, height: 2.6, unit: 'm', maxLoad: 1000 });
   const [crates, setCrates] = useState<Crate[]>([{
     id: 1,
@@ -100,10 +99,10 @@ export default function App() {
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [sel, setSel]   = useState<Set<number>>(new Set());
 
-  // derived -------------------------------------------------------------
+  // derived ------------------------------------------------------------
   const { placed, overflow } = useMemo(() => pack(truck, crates), [truck, crates]);
   const totalWeight = useMemo(() => crates.reduce((s, c) => s + c.weight, 0), [crates]);
-  const capacityReached = truck.maxLoad !== undefined && totalWeight >= truck.maxLoad;
+  const capacityReached = truck.maxLoad !== undefined && totalWeight >= truck.maxLoad!;
   const overlaps = useMemo(() => {
     const list: string[] = [];
     for (let i = 0; i < placed.length; i++) {
@@ -122,7 +121,7 @@ export default function App() {
     return list;
   }, [placed]);
 
-  // actions -------------------------------------------------------------
+  // actions ------------------------------------------------------------
   const addCrate = (row?: ParsedRow) => setCrates(arr => [
     ...arr,
     {
@@ -139,7 +138,7 @@ export default function App() {
   const upd = (id: number, patch: Partial<Crate>) => setCrates(arr => arr.map(c => c.id === id ? { ...c, ...patch } : c));
   const del = (id: number) => setCrates(arr => arr.filter(c => c.id !== id && c.stackTargetId !== id));
 
-  // Excel import --------------------------------------------------------
+  // Excel import -------------------------------------------------------
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
     const reader = new FileReader();
@@ -151,23 +150,24 @@ export default function App() {
     reader.readAsArrayBuffer(e.target.files[0]);
   };
 
-  // geometry constants --------------------------------------------------
+  // geometry constants -------------------------------------------------
   const TL = toM(truck.length, truck.unit);
   const TW = toM(truck.width,  truck.unit);
   const TH = toM(truck.height, truck.unit);
 
-  // render --------------------------------------------------------------
+  // render -------------------------------------------------------------
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
+      {/* ––––– banners */}
       {overflow.length > 0 && <Banner color="#c62828">Overflow: {overflow.map(id => crates.find(c => c.id === id)!.label).join(', ')}</Banner>}
       {capacityReached && <Banner color="#f57c00" top={32}>Max load {totalWeight}/{truck.maxLoad} kg</Banner>}
       {overlaps.length > 0 && <Banner color="#b71c1c" top={64}>Overlap: {overlaps.join('; ')}</Banner>}
 
-      {/* ─── sidebar ─────────────────────────────────────────────────── */}
-      <aside style={{ width: 400, padding: 12, overflowY: 'auto', borderRight: '1px solid #ddd' }}>
+      {/* ─── sidebar */}
+      <aside style={{ width: 300, padding: 12, overflowY: 'auto', borderRight: '1px solid #ddd' }}>
         <h3>Truck</h3>
         {(['height', 'length', 'width'] as Dim[]).map(dim => (
-          <p key={dim}>{DIM[dim]} <input type="number" style={{ width: 70 }} value={truck[dim]} onChange={e => setTruck({ ...truck, [dim]: +e.target.value } as Truck)} /> {truck.unit}</p>
+          <p key={dim}>{DIM[dim]} <input type="number" style={{ width: 70 }} value={(truck as any)[dim]} onChange={e => setTruck({ ...truck, [dim]: +e.target.value } as Truck)} /> {truck.unit}</p>
         ))}
         <p>Unit <select value={truck.unit} onChange={e => setTruck({ ...truck, unit: e.target.value as Unit })}>{UNITS.map(u => <option key={u} value={u}>{u}</option>)}</select></p>
         <p>Max load <input type="number" style={{ width: 100 }} value={truck.maxLoad ?? ''} onChange={e => setTruck({ ...truck, maxLoad: e.target.value ? +e.target.value : undefined })} /> kg</p>
@@ -185,4 +185,4 @@ export default function App() {
 
         <h3>Crates</h3>
         {crates.map(c => (
-          <details key={c.id} style={{ marginBottom:
+          <details key={
