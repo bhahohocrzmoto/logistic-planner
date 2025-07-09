@@ -6,28 +6,8 @@ import CrateForm from "./components/CrateForm";
 import ViewCube from "./components/ViewCube";
 import useUndo from "./hooks/useUndo";
 import "./styles.css";
+import type { Crate, Truck, Unit } from "./types";
 
-/* ──────────────────── types ──────────────────── */
-export type Unit = "m" | "cm";
-export interface Crate {
-  id: number;
-  l: number;
-  w: number;
-  h: number;
-  weight: number;
-  color: string;
-  opacity: number;
-  label: string;
-  stack: "floor" | number;
-  pos: [number, number, number];
-}
-interface Truck {
-  h: number;
-  l: number;
-  w: number;
-  maxLoad: number;
-  unit: Unit;
-}
 
 /* ──────────────────── constants ──────────────────── */
 const DEFAULT_TRUCK: Truck = {
