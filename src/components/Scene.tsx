@@ -1,7 +1,5 @@
-import { Canvas } from "@react-three/fiber";
-import { OrbitControls, Stats } from "@react-three/drei";
-import { Suspense, memo } from "react";
-import type { Crate, Truck } from "../types";
+import React, { Suspense, memo } from "react";
+import type { Crate, Truck } from "../App";
 import { CrateMesh, Floor, FrontPlate } from "./helpers";
 
 interface Props {
@@ -9,28 +7,24 @@ interface Props {
   crates: Crate[];
 }
 
+/*  NOTE:
+    - **No** <Canvas> here any longer.  App.tsx already creates one.
+    - Pure scene contents only (meshes, lights, helpers, …)           */
 const Scene: React.FC<Props> = ({ truck, crates }) => (
-  <Canvas camera={{ position: [8, 7, 8], fov: 40 }}>
-    {/* let Drei suspend while textures/geometries load */}
-    <Suspense fallback={null}>
-      {/* lights */}
-      <hemisphereLight intensity={0.4} />
-      <directionalLight position={[5, 10, 7]} intensity={0.8} castShadow />
+  <Suspense fallback={null}>
+    {/* lights that require to live inside the Canvas */}
+    <hemisphereLight intensity={0.4} />
+    <directionalLight position={[5, 10, 7]} intensity={0.8} castShadow />
 
-      {/* floor & reference plates */}
-      <Floor truck={truck} />
-      <FrontPlate truck={truck} />
+    {/* floor & front reference plate */}
+    <Floor truck={truck} />
+    <FrontPlate truck={truck} />
 
-      {/* crates */}
-      {crates.map(c => (
-        <CrateMesh key={c.id} crate={c} />
-      ))}
-    </Suspense>
-
-    {/* helpers */}
-    <OrbitControls makeDefault enableDamping />
-    <Stats />
-  </Canvas>
+    {/* crates */}
+    {crates.map(c => (
+      <CrateMesh key={c.id} crate={c} />
+    ))}
+  </Suspense>
 );
 
 export default memo(Scene);
