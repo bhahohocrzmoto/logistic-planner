@@ -1,43 +1,59 @@
-import { ChangeEvent } from "react";
-import type { Crate } from "../types";
+import { ChangeEvent, memo } from "react";
+import type { Crate } from "../App";          // ←   types live in App.tsx
 
 type Props = {
   crate: Crate;
-  update: (id: string, partial: Partial<Crate>) => void;
-  remove: (id: string) => void;
+  onChange: (patch: Partial<Crate>) => void;
+  onDelete: () => void;
 };
 
-const line = { display: "flex", alignItems: "center", gap: ".25rem" };
+const line = { display: "flex", alignItems: "center", gap: ".35rem", margin: ".15rem 0" };
 
-export default function CrateForm({ crate, update, remove }: Props) {
-  const on = (k: keyof Crate) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-    update(crate.id, { [k]: e.target.type === "number" ? +e.target.value : e.target.value } as any);
+function CrateForm({ crate, onChange, onDelete }: Props) {
+  // helper ­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­►
+  const change =
+    (k: keyof Crate) =>
+    (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      onChange({
+        [k]:
+          e.target.type === "number"
+            ? Number(e.target.value)
+            : (e.target.value as any),
+      });
 
   return (
-    <details style={{ marginBottom: ".5rem" }}>
-      <summary>{crate.label || `Crate ${crate.id}`}</summary>
+    <details style={{ marginBottom: ".6rem" }}>
+      <summary style={{ cursor: "pointer" }}>
+        {crate.label || `Crate ${crate.id}`}
+      </summary>
 
-      {/* geometry ------------------------------------------------------ */}
+      {/* dimensions */}
       <div style={line}>
-        L <input type="number" value={crate.length} onChange={on("length")} style={{ width: 48 }} />
-        W <input type="number" value={crate.width} onChange={on("width")} style={{ width: 48 }} />
-        H <input type="number" value={crate.height} onChange={on("height")} style={{ width: 48 }} />
-        unit m
+        L&nbsp;
+        <input type="number" value={crate.l} onChange={change("l")} style={{ width: 48 }} />
+        W&nbsp;
+        <input type="number" value={crate.w} onChange={change("w")} style={{ width: 48 }} />
+        H&nbsp;
+        <input type="number" value={crate.h} onChange={change("h")} style={{ width: 48 }} />
+        m
       </div>
 
-      {/* weight -------------------------------------------------------- */}
+      {/* weight */}
       <div style={line}>
-        Wt <input type="number" value={crate.weight} onChange={on("weight")} style={{ width: 64 }} /> kg
+        Wt&nbsp;
+        <input type="number" value={crate.weight} onChange={change("weight")} style={{ width: 64 }} />
+        kg
       </div>
 
-      {/* label --------------------------------------------------------- */}
+      {/* label */}
       <div style={line}>
-        Label <input value={crate.label ?? ""} onChange={on("label")} style={{ width: 120 }} />
+        Label&nbsp;
+        <input value={crate.label} onChange={change("label")} style={{ width: 120 }} />
       </div>
 
-      {/* colour / opacity --------------------------------------------- */}
+      {/* colour & opacity */}
       <div style={line}>
-        <input type="color" value={crate.color} onChange={on("color")} />
+        <input type="color" value={crate.color} onChange={change("color")} />
         Opacity&nbsp;
         <input
           type="range"
@@ -45,11 +61,15 @@ export default function CrateForm({ crate, update, remove }: Props) {
           max={1}
           step={0.05}
           value={crate.opacity}
-          onChange={on("opacity")}
+          onChange={change("opacity")}
         />
       </div>
 
-      <button onClick={() => remove(crate.id)}>🗑 Delete</button>
+      <button onClick={onDelete} style={{ marginTop: ".25rem" }}>
+        🗑 Delete
+      </button>
     </details>
   );
 }
+
+export default memo(CrateForm);
