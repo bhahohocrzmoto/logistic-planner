@@ -1,5 +1,5 @@
 import { ChangeEvent, memo } from "react";
-import type { Crate } from "../App";          // ←   types live in App.tsx
+import type { Crate } from "../types";
 
 type Props = {
   crate: Crate;
