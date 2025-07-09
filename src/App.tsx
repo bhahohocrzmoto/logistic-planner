@@ -1,18 +1,20 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+/* ────────────────────────────────────────────────────────────────────────────────
+   App.tsx  – 3-D truck-loading planner
+   ───────────────────────────────────────────────────────────────────────────── */
+import React, { useEffect, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Stats } from "@react-three/drei";
-import Scene from "./components/Scene";
-import CrateForm from "./components/CrateForm";
-import ViewCube from "./components/ViewCube";
+
+import Scene      from "./components/Scene";
+import CrateForm  from "./components/CrateForm";
+import ViewCube   from "./components/ViewCube";
+
 import useUndo from "./hooks/useUndo";
 import "./styles.css";
 
-/**
- * ────────────────────────────────────────────────────────────────────────────────
- *  TYPES
- * ────────────────────────────────────────────────────────────────────────────────
- */
+/* ─────────────────────────── types ─────────────────────────── */
 export type Unit = "m" | "cm";
+
 export interface Crate {
   id: number;
   l: number;
@@ -20,14 +22,10 @@ export interface Crate {
   h: number;
   weight: number;
   color: string;
-  opacity: number; // 0–1
+  opacity: number;     // 0 – 1
   label: string;
-  stack: "floor" | number; // "floor" or id of crate it sits on
-  /**
-   * Calculated 3‑D position – set by the placement algorithm and **not** edited
-   * directly in the form.
-   */
-  pos: [number, number, number];
+  stack: "floor" | number;   // “floor” or id of crate it sits on
+  pos: [number, number, number]; // set by algorithm (x, y, z)
 }
 
 interface Truck {
@@ -38,11 +36,7 @@ interface Truck {
   unit: Unit;
 }
 
-/**
- * ────────────────────────────────────────────────────────────────────────────────
- *  CONSTANTS
- * ────────────────────────────────────────────────────────────────────────────────
- */
+/* ───────────────────────── constants ───────────────────────── */
 const DEFAULT_TRUCK: Truck = {
   h: 2.6,
   l: 10,
@@ -53,38 +47,35 @@ const DEFAULT_TRUCK: Truck = {
 
 let idCounter = 0;
 
-/**
- * ────────────────────────────────────────────────────────────────────────────────
- *  COMPONENT
- * ────────────────────────────────────────────────────────────────────────────────
- */
+/* ───────────────────────── component ───────────────────────── */
 const App: React.FC = () => {
-  /**
-   * STATE & UNDO STACK
-   */
-  const [truck, setTruck] = useState<Truck>(DEFAULT_TRUCK);
+  /* state + undo stack */
+  const [truck] = React.useState<Truck>(DEFAULT_TRUCK);
   const [crates, setCrates, { undo, canUndo, push }] = useUndo<Crate[]>([]);
 
-  /**
-   * ─── helpers ──────────────────────────────────────────────────────────────
-   */
-  const totalWeight = useMemo(() => crates.reduce((s, c) => s + c.weight, 0), [crates]);
+  /* helpers */
+  const totalWeight = useMemo(
+    () => crates.reduce((s, c) => s + c.weight, 0),
+    [crates]
+  );
 
   const addCrate = () => {
-    const newCrate: Crate = {
-      id: ++idCounter,
-      l: 1,
-      w: 1,
-      h: 1,
-      weight: 50,
-      color: "#1565c0",
-      opacity: 0.8,
-      label: "",
-      stack: "floor",
-      pos: [0, 0, 0],
-    };
-    push(crates); // save previous state for undo
-    setCrates([...crates, newCrate]);
+    push(crates);
+    setCrates([
+      ...crates,
+      {
+        id: ++idCounter,
+        l: 1,
+        w: 1,
+        h: 1,
+        weight: 50,
+        color: "#1565c0",
+        opacity: 0.8,
+        label: "",
+        stack: "floor",
+        pos: [0, 0, 0],
+      },
+    ]);
   };
 
   const updateCrate = (id: number, patch: Partial<Crate>) => {
@@ -97,48 +88,50 @@ const App: React.FC = () => {
     setCrates(crates.filter(c => c.id !== id));
   };
 
-  /**
-   * PLACEMENT ALGORITHM  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░■
-   * Weighted alternating left/right & heaviest‑to‑front strategy.
-   * Runs whenever crates or truck dims change.
-   */
+  /* ─ placement algorithm ─────────────────────────────────────
+     - Alternates left/right with heaviest crates closest to the cab
+     - Keeps running whenever crate list changes                            */
   useEffect(() => {
-    const sorted = [...crates].sort((a, b) => b.weight - a.weight);
+    if (crates.length === 0) return;
 
-    let leftX = 0;
-    let rightX = 0;
-    const spacing = 0.05; // 5 cm gap between crates
+    const sorted = [...crates].sort((a, b) => b.weight - a.weight);
+    const gap = 0.05;          // 5 cm gap between crates
+
+    let leftEdge  = 0;
+    let rightEdge = 0;
 
     const placed: Crate[] = [];
 
-    sorted.forEach((crate, idx) => {
-      const isLeft = idx % 2 === 0;
-      const xOffset = isLeft ? -crate.w / 2 - spacing + leftX : crate.w / 2 + spacing + rightX;
-      const yOffset = 0; // on floor for now – stacking logic handled via stack prop
-      const zOffset = idx * (crate.l + spacing);
+    sorted.forEach((crate, i) => {
+      const isLeft = i % 2 === 0;
 
-      placed.push({ ...crate, pos: [xOffset, yOffset, -zOffset] });
+      const x = isLeft
+        ? -crate.w / 2 - leftEdge - gap
+        :  crate.w / 2 + rightEdge + gap;
 
-      if (isLeft) {
-        leftX -= crate.w + spacing;
-      } else {
-        rightX += crate.w + spacing;
-      }
+      // heavier crates get lower z (closer to cab)
+      const z = -(placed.reduce((s, p) => Math.max(s, -p.pos[2] + p.l), 0));
+
+      placed.push({ ...crate, pos: [x, 0, z] });
+
+      if (isLeft)  leftEdge  += crate.w + gap;
+      else         rightEdge += crate.w + gap;
     });
 
-    // Preserve form order but keep new positions
-    setCrates(prev => prev.map(c => placed.find(p => p.id === c.id) ?? c));
-  }, [crates.length, truck]); // eslint-disable-line react-hooks/exhaustive-deps
+    // write positions back matching original order
+    setCrates(prev =>
+      prev.map(c => placed.find(p => p.id === c.id) ?? c)
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crates.length]);
 
-  /**
-   * ─── render ───────────────────────────────────────────────────────────────
-   */
+  /* ───────────────────────── render ───────────────────────── */
   return (
     <div className="app">
-      {/* Sidebar */}
+      {/* sidebar */}
       <aside className="sidebar">
         <button className="undo-btn" onClick={undo} disabled={!canUndo}>
-          ~ Undo
+          ↶ Undo
         </button>
 
         {crates.map(c => (
@@ -150,18 +143,22 @@ const App: React.FC = () => {
           />
         ))}
 
-        <button className="add-btn" onClick={addCrate}>+ Add crate</button>
+        <button className="add-btn" onClick={addCrate}>＋ Add crate</button>
 
         <hr />
-        <p className="total">Total weight: {totalWeight} kg / {truck.maxLoad} kg</p>
+        <p className="total">
+          Total weight {totalWeight} kg / {truck.maxLoad} kg
+        </p>
       </aside>
 
-      {/* 3‑D viewport */}
+      {/* 3-D viewport */}
       <Canvas shadows camera={{ position: [8, 6, 10], fov: 45 }}>
         <ambientLight intensity={0.6} />
         <directionalLight position={[5, 10, 5]} intensity={0.8} castShadow />
+
         <Scene truck={truck} crates={crates} />
         <ViewCube />
+
         <OrbitControls makeDefault enablePan enableRotate enableZoom />
         <Stats />
       </Canvas>
