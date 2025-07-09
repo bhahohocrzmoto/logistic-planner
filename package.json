@@ -6,7 +6,7 @@
   "dependencies": {
     "@react-three/drei": "^9.56.12",
     "@react-three/fiber": "^8.16.7",
-    "@react-three/cannon": "^7.1.1",
+    "@react-three/cannon": "^7.0.1",
     "eslint-plugin-react-hooks": "^4.6.0",
     "three": "^0.161.0",
     "react": "^18.2.0",
