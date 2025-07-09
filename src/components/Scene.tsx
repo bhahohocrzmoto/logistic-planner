@@ -1,5 +1,5 @@
 import React, { Suspense, memo } from "react";
-import type { Crate, Truck } from "../App";
+import type { Crate, Truck } from "../types";
 import { CrateMesh, Floor, FrontPlate } from "./helpers";
 
 interface Props {
