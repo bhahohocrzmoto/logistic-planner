@@ -1,5 +1,5 @@
 /* ────────────────────────────────────────────────────────────────────────────────
-   App.tsx  – 3-D truck-loading planner
+   App.tsx  –  3-D truck-loading planner
    ───────────────────────────────────────────────────────────────────────────── */
 import React, { useEffect, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
@@ -7,9 +7,7 @@ import { OrbitControls, Stats } from "@react-three/drei";
 
 import Scene      from "./components/Scene";
 import CrateForm  from "./components/CrateForm";
-import ViewCube   from "./components/ViewCube";
-
-import useUndo from "./hooks/useUndo";
+import useUndo    from "./hooks/useUndo";
 import "./styles.css";
 
 /* ─────────────────────────── types ─────────────────────────── */
@@ -22,13 +20,13 @@ export interface Crate {
   h: number;
   weight: number;
   color: string;
-  opacity: number;     // 0 – 1
+  opacity: number;                 // 0 – 1
   label: string;
-  stack: "floor" | number;   // “floor” or id of crate it sits on
-  pos: [number, number, number]; // set by algorithm (x, y, z)
+  stack: "floor" | number;         // “floor” or id of crate it sits on
+  pos: [number, number, number];   // set by algorithm
 }
 
-interface Truck {
+export interface Truck {
   h: number;
   l: number;
   w: number;
@@ -60,7 +58,7 @@ const App: React.FC = () => {
   );
 
   const addCrate = () => {
-    push(crates);
+    push(crates);                               // push previous state for undo
     setCrates([
       ...crates,
       {
@@ -89,8 +87,8 @@ const App: React.FC = () => {
   };
 
   /* ─ placement algorithm ─────────────────────────────────────
-     - Alternates left/right with heaviest crates closest to the cab
-     - Keeps running whenever crate list changes                            */
+     Alternates left/right with heaviest crates closest to the cab.
+     Re-runs whenever the crate list length changes.              */
   useEffect(() => {
     if (crates.length === 0) return;
 
@@ -109,8 +107,8 @@ const App: React.FC = () => {
         ? -crate.w / 2 - leftEdge - gap
         :  crate.w / 2 + rightEdge + gap;
 
-      // heavier crates get lower z (closer to cab)
-      const z = -(placed.reduce((s, p) => Math.max(s, -p.pos[2] + p.l), 0));
+      // heavier crates = lower z (closer to truck cab)
+      const z = -placed.reduce((s, p) => Math.max(s, -p.pos[2] + p.l), 0);
 
       placed.push({ ...crate, pos: [x, 0, z] });
 
@@ -118,17 +116,15 @@ const App: React.FC = () => {
       else         rightEdge += crate.w + gap;
     });
 
-    // write positions back matching original order
-    setCrates(prev =>
-      prev.map(c => placed.find(p => p.id === c.id) ?? c)
-    );
+    // map positions back to original ordering
+    setCrates(prev => prev.map(c => placed.find(p => p.id === c.id) ?? c));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crates.length]);
 
   /* ───────────────────────── render ───────────────────────── */
   return (
     <div className="app">
-      {/* sidebar */}
+      {/* Sidebar */}
       <aside className="sidebar">
         <button className="undo-btn" onClick={undo} disabled={!canUndo}>
           ↶ Undo
@@ -143,7 +139,9 @@ const App: React.FC = () => {
           />
         ))}
 
-        <button className="add-btn" onClick={addCrate}>＋ Add crate</button>
+        <button className="add-btn" onClick={addCrate}>
+          ＋ Add crate
+        </button>
 
         <hr />
         <p className="total">
@@ -156,8 +154,8 @@ const App: React.FC = () => {
         <ambientLight intensity={0.6} />
         <directionalLight position={[5, 10, 5]} intensity={0.8} castShadow />
 
+        {/* The actual scene geometry */}
         <Scene truck={truck} crates={crates} />
-        <ViewCube />
 
         <OrbitControls makeDefault enablePan enableRotate enableZoom />
         <Stats />
