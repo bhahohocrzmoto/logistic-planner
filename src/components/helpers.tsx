@@ -1,42 +1,42 @@
+/* ──────────────────────────────────────────────────────────
+   src/components/helpers.tsx   – updated
+─────────────────────────────────────────────────────────── */
 import { useMemo } from "react";
 import { Box, Text } from "@react-three/drei";
 import type { Crate, Truck } from "../types";
 
-/* ── reusable floor ───────────────────────────────────────────────────────── */
+/* ─ floor (truck bed) ─────────────────────────────── */
 export const Floor: React.FC<{ truck: Truck }> = ({ truck }) => {
-  const { l, w } = truck;                       // ← use same keys as Truck
+  const { l, w } = truck;                     // length, width
   return (
-    <mesh
-      rotation={[-Math.PI / 2, 0, 0]}
-      position={[l / 2, 0, 0]}                  // centred at x-mid & z = 0
-      receiveShadow
-    >
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[l / 2, 0, w / 2]} receiveShadow>
       <planeGeometry args={[l, w]} />
       <meshStandardMaterial color="#222" />
     </mesh>
   );
 };
 
-/* ── front-reference plate (grey) ─────────────────────────────────────────── */
+/* ─ grey plate that marks the front (cab) ─────────── */
 export const FrontPlate: React.FC<{ truck: Truck }> = ({ truck }) => {
-  const { w, h } = truck;
+  const { w } = truck;
   return (
     <mesh
-      position={[0, h / 2, 0]}                  // at front (x = 0), centred
-      rotation={[0, Math.PI / 2, 0]}            // plate faces backward
+      position={[0, 1.3, w / 2]}        /* centred, 1.3 m up */
       castShadow
       receiveShadow
     >
-      <planeGeometry args={[w, h]} />
-      <meshStandardMaterial color="#555" />
+      <planeGeometry args={[w, 2.6]} /> /* same height as truck */
+      <meshStandardMaterial color="#555" side={2 /* DoubleSide */} />
     </mesh>
   );
 };
 
-/* ── crate mesh with optional label ───────────────────────────────────────── */
+/* ─ individual crate mesh with optional label ─────── */
 export const CrateMesh: React.FC<{ crate: Crate }> = ({ crate }) => {
-  const { l, h, w, color, opacity, label, pos } = crate;
-  const size = useMemo(() => [l, h, w] as const, [l, h, w]);
+  const { l, w, h, color, opacity, pos, label } = crate;
+
+  /* mutable size array to satisfy drei’s <Box>  */
+  const size = useMemo<[number, number, number]>(() => [l, h, w], [l, h, w]);
 
   return (
     <group position={[pos[0] + l / 2, pos[1] + h / 2, pos[2] + w / 2]}>
