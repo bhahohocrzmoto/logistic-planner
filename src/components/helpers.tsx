@@ -1,56 +1,49 @@
-/* src/components/helpers.tsx */
 import { useMemo } from "react";
 import { Box, Text } from "@react-three/drei";
 import type { Crate, Truck } from "../types";
 
-/* ───────────────────────── floor (truck deck) ───────────────────────── */
+/* ── reusable floor ───────────────────────────────────────────────────────── */
 export const Floor: React.FC<{ truck: Truck }> = ({ truck }) => {
-  const { l: length, w: width } = truck;                // ← use same keys as Truck
+  const { l, w } = truck;                       // ← use same keys as Truck
   return (
     <mesh
-      receiveShadow
       rotation={[-Math.PI / 2, 0, 0]}
-      // shift so (0,0,0) is rear-left corner in Scene
-      position={[length / 2, 0, width / 2]}
+      position={[l / 2, 0, 0]}                  // centred at x-mid & z = 0
+      receiveShadow
     >
-      <planeGeometry args={[length, width]} />
+      <planeGeometry args={[l, w]} />
       <meshStandardMaterial color="#222" />
     </mesh>
   );
 };
 
-/* ─────────────── grey plate that marks the truck’s front ────────────── */
+/* ── front-reference plate (grey) ─────────────────────────────────────────── */
 export const FrontPlate: React.FC<{ truck: Truck }> = ({ truck }) => {
-  const { h: height, w: width } = truck;
-  // front wall sits at x = 0 (rear-left coordinate frame), spanning full width
+  const { w, h } = truck;
   return (
     <mesh
-      position={[0, height / 2, width / 2]}
-      rotation={[0, 0, 0]}
+      position={[0, h / 2, 0]}                  // at front (x = 0), centred
+      rotation={[0, Math.PI / 2, 0]}            // plate faces backward
       castShadow
       receiveShadow
     >
-      <planeGeometry args={[width, height]} />
+      <planeGeometry args={[w, h]} />
       <meshStandardMaterial color="#555" />
     </mesh>
   );
 };
 
-/* ───────────────────────── single crate mesh ────────────────────────── */
+/* ── crate mesh with optional label ───────────────────────────────────────── */
 export const CrateMesh: React.FC<{ crate: Crate }> = ({ crate }) => {
-  const { l, w, h, color, opacity, label, pos } = crate;
-  const [x, y, z] = pos;                                // pos is crate’s back-left-bottom corner
-
-  // size of the box
-  const args = useMemo<[number, number, number]>(() => [l, h, w], [l, h, w]);
+  const { l, h, w, color, opacity, label, pos } = crate;
+  const size = useMemo(() => [l, h, w] as const, [l, h, w]);
 
   return (
-    <group position={[x + l / 2, y + h / 2, z + w / 2]}>
-      <Box args={args} castShadow receiveShadow>
+    <group position={[pos[0] + l / 2, pos[1] + h / 2, pos[2] + w / 2]}>
+      <Box args={size} castShadow receiveShadow>
         <meshStandardMaterial color={color} transparent opacity={opacity} />
       </Box>
 
-      {/* optional label on top face */}
       {label && (
         <Text
           position={[0, h / 2 + 0.01, 0]}
@@ -58,6 +51,7 @@ export const CrateMesh: React.FC<{ crate: Crate }> = ({ crate }) => {
           fontSize={0.25}
           anchorX="center"
           anchorY="middle"
+          fillOpacity={0.85}
         >
           {label}
         </Text>
