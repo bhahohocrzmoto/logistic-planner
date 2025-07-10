@@ -6,10 +6,9 @@ import CrateForm from "./components/CrateForm";
 import ViewCube from "./components/ViewCube";
 import useUndo from "./hooks/useUndo";
 import "./styles.css";
-import type { Crate, Truck, Unit } from "./types";
+import type { Crate, Truck } from "./types";
 
-
-/* ──────────────────── constants ──────────────────── */
+/* ───────────── constants ───────────── */
 const DEFAULT_TRUCK: Truck = {
   h: 2.6,
   l: 10,
@@ -19,7 +18,7 @@ const DEFAULT_TRUCK: Truck = {
 };
 let idCounter = 0;
 
-/* ──────────────────── component ──────────────────── */
+/* ───────────── component ───────────── */
 const App: React.FC = () => {
   /* state & undo */
   const [truck] = useState<Truck>(DEFAULT_TRUCK);
@@ -52,12 +51,12 @@ const App: React.FC = () => {
 
   const updateCrate = (id: number, patch: Partial<Crate>) => {
     push(crates);
-    setCrates(crates.map(c => (c.id === id ? { ...c, ...patch } : c)));
+    setCrates(crates.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   };
 
   const deleteCrate = (id: number) => {
     push(crates);
-    setCrates(crates.filter(c => c.id !== id));
+    setCrates(crates.filter((c) => c.id !== id));
   };
 
   /* placement algorithm */
@@ -83,8 +82,8 @@ const App: React.FC = () => {
       else rightX += crate.w + gap;
     });
 
-    setCrates(prev => prev.map(c => placed.find(p => p.id === c.id) ?? c));
-  }, [crates, truck]); // ✅ rule satisfied – directive no longer needed
+    setCrates((prev) => prev.map((c) => placed.find((p) => p.id === c.id) ?? c));
+  }, [crates, truck]);
 
   /* render */
   return (
@@ -95,11 +94,11 @@ const App: React.FC = () => {
           ~ Undo
         </button>
 
-        {crates.map(c => (
+        {crates.map((c) => (
           <CrateForm
             key={c.id}
             crate={c}
-            onChange={patch => updateCrate(c.id, patch)}
+            onChange={(patch) => updateCrate(c.id, patch)}
             onDelete={() => deleteCrate(c.id)}
           />
         ))}
@@ -115,14 +114,18 @@ const App: React.FC = () => {
       </aside>
 
       {/* 3-D viewport */}
-      <Canvas shadows camera={{ position: [8, 6, 10], fov: 45 }}>
-        <ambientLight intensity={0.6} />
-        <directionalLight position={[5, 10, 5]} intensity={0.8} castShadow />
-        <Scene truck={truck} crates={crates} />
-        <ViewCube />
-        <OrbitControls makeDefault enablePan enableRotate enableZoom />
-        <Stats />
-      </Canvas>
+      <div className="viewport">
+        <Canvas shadows camera={{ position: [8, 6, 10], fov: 45 }}>
+          <ambientLight intensity={0.6} />
+          <directionalLight position={[5, 10, 5]} intensity={0.8} castShadow />
+          <Scene truck={truck} crates={crates} />
+          <ViewCube />
+          <OrbitControls makeDefault enablePan enableRotate enableZoom />
+
+          {/* show FPS panel only while developing */}
+          {process.env.NODE_ENV === "development" && <Stats />}
+        </Canvas>
+      </div>
     </div>
   );
 };
