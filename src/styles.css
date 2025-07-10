@@ -1,23 +1,47 @@
-/* src/styles.css  ─ anything you want, or leave empty for now */
+/* reset & layout -------------------------------------------------------- */
+* { box-sizing: border-box; }
 
-body {
+html, body, #root {
+  height: 100%;                 /* let Canvas fill the viewport */
   margin: 0;
   font-family: system-ui, sans-serif;
 }
 
-/* give Three-JS canvas a full-screen flex area */
-#root, html, body {
+.app {
+  display: flex;                /* sidebar | 3-D viewport */
   height: 100%;
 }
 
-.panel {
-  padding: 0.5rem 1rem;
-  line-height: 1.4;
+/* sidebar --------------------------------------------------------------- */
+.sidebar {
+  width: 280px;
+  padding: 0.75rem;
+  overflow-y: auto;
+  background: #fff;
+  border-right: 1px solid #ccc;
+  font-size: 0.95rem;
 }
 
-input[type="color"] {
-  border: none;
-  width: 40px;
-  height: 24px;
-  padding: 0;
+.sidebar button {
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+  margin: 0.3rem 0 0;
+  cursor: pointer;
+}
+
+.undo-btn { width: 100%; }
+.add-btn  { width: 100%; }
+
+/* three-js canvas container -------------------------------------------- */
+.viewport {
+  flex: 1;                      /* take the rest of the row */
+}
+
+/* move the drei <Stats> panel to the top-right -------------------------- */
+#react-three-fiber-stats {
+  position: fixed !important;
+  top:   0.25rem !important;
+  left:  auto  !important;
+  right: 0.25rem !important;
+  z-index: 1000;
 }
